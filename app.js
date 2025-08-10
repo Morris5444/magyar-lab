@@ -105,6 +105,68 @@
         { word: 'barát', translation: 'Freund' },
         { word: 'barátnő', translation: 'Freundin' }
       ]
+    },
+    {
+      id: 4,
+      level: 'A1',
+      title: 'Lektion 4: Essen und Trinken',
+      explanation:
+        'Grundlegende Begriffe für Lebensmittel und Getränke helfen im Alltag weiter.',
+      examples: [
+        { hu: 'víz', de: 'Wasser' },
+        { hu: 'kenyér', de: 'Brot' },
+        { hu: 'alma', de: 'Apfel' },
+        { hu: 'tej', de: 'Milch' }
+      ],
+      exercises: [
+        {
+          question: 'Was bedeutet „kenyér”?',
+          options: ['Brot', 'Milch', 'Käse'],
+          answer: 0
+        },
+        {
+          question: 'Wie sagt man „Apfel” auf Ungarisch?',
+          options: ['víz', 'alma', 'sajt'],
+          answer: 1
+        }
+      ],
+      vocabulary: [
+        { word: 'víz', translation: 'Wasser' },
+        { word: 'kenyér', translation: 'Brot' },
+        { word: 'alma', translation: 'Apfel' },
+        { word: 'tej', translation: 'Milch' }
+      ]
+    },
+    {
+      id: 5,
+      level: 'A1',
+      title: 'Lektion 5: Im Haus',
+      explanation:
+        'Wichtige Wörter rund um das Zuhause erleichtern Gespräche über den Alltag.',
+      examples: [
+        { hu: 'ház', de: 'Haus' },
+        { hu: 'szoba', de: 'Zimmer' },
+        { hu: 'konyha', de: 'Küche' },
+        { hu: 'fürdő', de: 'Bad' }
+      ],
+      exercises: [
+        {
+          question: 'Was bedeutet „szoba”?',
+          options: ['Zimmer', 'Haus', 'Garten'],
+          answer: 0
+        },
+        {
+          question: 'Wie sagt man „Küche” auf Ungarisch?',
+          options: ['fürdő', 'kert', 'konyha'],
+          answer: 2
+        }
+      ],
+      vocabulary: [
+        { word: 'ház', translation: 'Haus' },
+        { word: 'szoba', translation: 'Zimmer' },
+        { word: 'konyha', translation: 'Küche' },
+        { word: 'kert', translation: 'Garten' }
+      ]
     }
   ];
 
