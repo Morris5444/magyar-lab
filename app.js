@@ -1,33 +1,67 @@
 // MagyarLab – Static SPA (vanilla JS, no build tools)
 (function () {
   const LS_KEY = "magyarlab-v1-state";
+  const APP_VERSION = 2; // Fix: Schema-Version für Migration
 
-  const state = loadState() || {
+  // ---------- Storage ----------
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function saveState() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  // ---------- Default State ----------
+  const DEFAULT_STATE = {
+    meta: { version: APP_VERSION },
     profile: {
       audience: "de",
-      level: null,          // <= Nur noch Niveau
-      examPrep: false,      // Prüfungsmodus-Schalter bleibt über Einstellungen
+      level: null,          // Nur noch Niveau
+      examPrep: false,      // Prüfungsmodus-Schalter bleibt
       audio: { slow: true, normal: true },
       allowOffline: true,
       feedback: true,
     },
     progress: {
-      completedLessons: {},
+      completedLessons: {}, // { lessonId: true }
       scores: {},
-      levelByTrack: {},
     },
-    srs: {}, // vocabId -> { reps, interval, ease, due }
-    ui: { tab: "lessons", route: "onboarding", lessonId: null }, // nach Onboarding direkt "lessons"
+    srs: {},                // vocabId -> { reps, interval, ease, due }
+    ui: { tab: "lessons", route: "onboarding", lessonId: null },
     todayPlan: [],
   };
 
+  // ---------- Init + Migration ----------
+  let state = loadState() || structuredClone(DEFAULT_STATE);
+
+  // Migrationslogik: alte Felder entfernen, Onboarding erzwingen, Level setzen
+  (function migrate() {
+    if (!state.meta) state.meta = { version: 1 };
+    const prev = state.meta.version || 1;
+
+    // Entferne alte Felder aus früheren Versionen
+    if (state.profile) {
+      delete state.profile.track; // Fokus
+      delete state.profile.modes; // Modus
+    }
+
+    // Bei Schema-Änderung: Onboarding erneut zeigen und B2 vorschlagen
+    if (prev < APP_VERSION) {
+      if (!state.profile.level) state.profile.level = "B2";
+      state.ui.route = "onboarding";
+      state.ui.tab = "lessons";
+      state.meta.version = APP_VERSION;
+    }
+
+    // Falls gar kein Level gesetzt ist (frischer Start): B2 als Default anzeigen
+    if (!state.profile.level) state.profile.level = "B2";
+  })();
+
   // ---------- Curriculum ----------
-  // A1 aus der ersten Version bleibt (gekürzt auf die bisherigen 12 Units),
-  // B2 neu hinzugefügt (Themen aus deinen Bildern, neu formuliert).
   const CURRICULUM = {
-    /* --- bestehendes A1 (ausgelassen hier NICHT, wir geben einige Units,
-       du hattest sie schon in v1. Wenn du 1:1 deine alte A1 möchtest,
-       lass diese A1-Sektion stehen; ich fokussiere unten auf B2. --- */
     A1: [
       {
         id: "a1-u1",
@@ -67,10 +101,10 @@
           { id: "nem", hu: "Nem", de: "Nein" },
         ],
       },
-      // ... (deine bisherigen A1-Lektionen aus v1 bleiben unverändert)
+      // Deine weiteren A1-Units aus v1 können hier unverändert bleiben.
     ],
 
-    /* ---------------- B2: neue Lektionen (aus deinen Bildern, neu geschrieben) --------------- */
+    /* ---------------- B2: neue Lektionen --------------- */
     B2: [
       /* 01 */{
         id: "b2-u1",
@@ -243,7 +277,7 @@
         id: "b2-u6",
         title: "Unregelmäßig (1): eszik/iszik/tesz/vesz/visz (def.)",
         grammar: [
-          { name: "Stammwechsel & Doppel-s: eszi/esszük; issza/isszuk; teszi/teszed… " },
+          { name: "Stammwechsel & Doppel-s: eszi/esszük; issza/isszuk; teszi/teszed…" },
           { name: "Objekt als Auslöser für definit" },
         ],
         examples: [
@@ -254,7 +288,7 @@
         exercises: [
           { type: "gap", prompt: "Setze die def. Form:",
             items: [
-              { q: "én ____ (eszik) a pizzát", a: "eszem / eszem a pizzát" },
+              { q: "én ____ (eszik) a pizzát", a: "eszem" },
               { q: "ő ____ (iszik) a kávét", a: "issza" },
               { q: "mi ____ (tenni) a csomagot az asztalra", a: "tesszük" },
               { q: "ti ____ (venni) a jegyeket", a: "veszitek" },
@@ -497,9 +531,8 @@
     },
   ];
 
-  // ---------- SRS scheduler ----------
+  // ---------- SRS ----------
   function nextInterval(card, grade) {
-    // grade: 0 (again), 3 (hard), 4 (good), 5 (easy)
     const now = Date.now();
     let { reps = 0, interval = 0, ease = 2.5 } = card || {};
     if (grade < 3) {
@@ -535,17 +568,6 @@
     speechSynthesis.speak(u);
   }
 
-  // ---------- Storage ----------
-  function saveState() {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
-  }
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
-  }
-
   // ---------- Utils ----------
   function el(tag, attrs={}, children=[]) {
     const node = document.createElement(tag);
@@ -571,8 +593,11 @@
     const due = Object.entries(state.srs)
       .filter(([,v]) => !v?.due || v.due <= Date.now())
       .map(([id]) => ({ type: "srs", id }));
-    const lvl = state.profile.level || "A1";
-    const nextLesson = (CURRICULUM[lvl] || []).find(l => !state.progress.completedLessons[l.id]);
+
+    const lvl = state.profile.level || "B2";
+    const levelLessons = (CURRICULUM[lvl] || []);
+    const nextLesson = levelLessons.find(l => !state.progress.completedLessons[l.id]);
+
     const plan = [...due.slice(0, 10)];
     if (nextLesson) plan.push({ type: "lesson", id: nextLesson.id });
     state.todayPlan = plan;
@@ -623,7 +648,7 @@
     parent.appendChild(ViewRouter());
   }
 
-  // ---------- Root content (router) ----------
+  // ---------- Root content ----------
   function ViewDashboard(){
     const wrap = el("div", { class:"body grid grid-2", style:"margin-top:16px" }, [
       CardDayPlan(),
@@ -639,7 +664,7 @@
     if (state.ui.tab === "reviews") return Reviews();
     if (state.ui.tab === "settings") return Settings();
     if (state.profile.examPrep && state.ui.tab === "exam") return ExamHome();
-    return el("div"); // empty
+    return el("div");
   }
 
   // ---------- Onboarding (nur Niveau) ----------
@@ -685,11 +710,15 @@
   function CardDayPlan(){
     const lvl = state.profile.level || "B2";
     const lessons = CURRICULUM[lvl] || [];
-    const completed = Object.keys(state.progress.completedLessons).length;
-    const total = lessons.length;
-    const pct = total ? Math.round((completed/total)*100) : 0;
-    const dueCount = Object.values(state.srs).filter(v => !v.due || v.due <= Date.now()).length;
 
+    // Fix: Fortschritt nur über das aktuelle Niveau
+    const lessonIds = new Set(lessons.map(l => l.id));
+    const completedCount = Object.keys(state.progress.completedLessons)
+      .filter(id => lessonIds.has(id)).length;
+    const total = lessons.length;
+    const pct = total ? Math.round((completedCount/total)*100) : 0;
+
+    const dueCount = Object.values(state.srs).filter(v => !v.due || v.due <= Date.now()).length;
     const bar = el("div", { class:"progress" }, [ el("i", { style:`width:${pct}%` }) ]);
 
     return el("div", { class:"card" }, [
@@ -713,6 +742,18 @@
     ]);
   }
   function BtnOutline(label, onclick){ return el("button", { class:"btn", onclick }, [label]); }
+
+  function CardTipsInner(dueCount){
+    const exam = state.profile.examPrep;
+    const msg = exam ?
+      "Prüfungsmodus aktiv: 1 Hörtext + 1 Leseaufgabe + 10 SRS-Karten." :
+      (dueCount > 10 ? "Viele Wiederholungen fällig: 2 Blöcke à 10 Karten mit 5-Minuten-Pausen." :
+       "Konstanz schlägt Intensität: 15–20 Minuten täglich reichen.");
+    return el("div", { class:"card" }, [
+      el("div", { class:"hd" }, ["Lern-Tipp"]),
+      el("div", { class:"bd" }, [ msg ]),
+    ]);
+  }
 
   function PlanList(){
     const items = state.todayPlan || [];
@@ -830,7 +871,7 @@
   function renderExercises(list){
     return list.map(ex => {
       if (ex.type === "gap") return GapExercise(ex);
-      if (ex.type === "mc") return MCExercise(ex);
+      if (ex.type === "mc")  return MCExercise(ex);
       if (ex.type === "match") return MatchExercise(ex);
       return el("div");
     });
@@ -838,7 +879,7 @@
   function GapExercise(ex){
     const wrap = el("div", { class:"card exercise" }, [
       el("div", { class:"hd" }, [ex.prompt]),
-      el("div", { class:"bd grid" }, ex.items.map((it,i) => GapItem(it,i))),
+      el("div", { class:"bd grid" }, (ex.items||[]).map((it,i) => GapItem(it,i))),
     ]);
     return wrap;
   }
@@ -858,7 +899,8 @@
     return row;
   }
   function MCExercise(ex){
-    const body = el("div", { class:"bd" }, ex.options.map((opt,i) => {
+    const opts = ex.options || [];
+    const body = el("div", { class:"bd" }, opts.map((opt,i) => {
       return el("button", { class:"btn", onclick:()=>{
         [...body.children].forEach((btn, idx) => {
           btn.className = "btn" + (idx === ex.answer ? " ok" : (idx===i ? " danger" : ""));
@@ -869,11 +911,11 @@
       el("div", { class:"hd" }, [ex.prompt]),
       body
     ]);
-  }
+    }
   function MatchExercise(ex){
     return el("div", { class:"card" }, [
       el("div", { class:"hd" }, [ex.prompt]),
-      el("div", { class:"bd grid" }, ex.pairs.map(p => el("div", { class:"row" }, [
+      el("div", { class:"bd grid" }, (ex.pairs||[]).map(p => el("div", { class:"row" }, [
         el("div", {}, [`${p.left}-`]),
         el("div", { class:"badge" }, [p.right])
       ]))),
@@ -986,7 +1028,7 @@
       ]),
     ]);
     const body = document.querySelector("#app .body");
-    body.appendChild(overlay);
+    (body || document.getElementById("app")).appendChild(overlay); // robust
   }
   function ExamPart(part, i, total){
     if (part.type === "reading"){
@@ -1044,4 +1086,6 @@
     ]);
   }
 
-})(); 
+  // Initial render
+  render();
+})();
