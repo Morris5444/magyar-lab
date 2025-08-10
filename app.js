@@ -11,6 +11,7 @@
     } catch (e) { return null; }
   }
   function saveState() {
+    if (!state?.profile?.allowOffline) return;
     try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
   }
 
@@ -558,14 +559,18 @@
   }
   function speak(text, opts={}) {
     if (!("speechSynthesis" in window)) return;
-    const u = new SpeechSynthesisUtterance(text);
-    const hu = VOICES.find(v => /hu/i.test(v.lang));
-    if (hu) u.voice = hu, u.lang = hu.lang;
-    else u.lang = "hu-HU";
-    u.rate = opts.rate || 1;
-    u.pitch = opts.pitch || 1;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      const hu = VOICES.find(v => /hu/i.test(v.lang));
+      u.voice = hu || null;
+      u.lang = hu?.lang || "hu-HU";
+      u.rate = opts.rate || 1;
+      u.pitch = opts.pitch || 1;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } catch (e) {
+      // no-op
+    }
   }
 
   // ---------- Utils ----------
@@ -644,6 +649,7 @@
     const body = document.querySelector("#app .body");
     if (!body) { render(); return; }
     const parent = body.parentElement;
+    if (!parent) { render(); return; }
     parent.removeChild(body);
     parent.appendChild(ViewRouter());
   }
@@ -713,23 +719,20 @@
 
     // Fix: Fortschritt nur über das aktuelle Niveau
     const lessonIds = new Set(lessons.map(l => l.id));
-    const completedCount = Object.keys(state.progress.completedLessons)
+    const completedCount = Object.keys(state.progress.completedLessons || {})
       .filter(id => lessonIds.has(id)).length;
     const total = lessons.length;
     const pct = total ? Math.round((completedCount/total)*100) : 0;
 
-    const dueCount = Object.values(state.srs).filter(v => !v.due || v.due <= Date.now()).length;
+    const dueCount = Object.values(state.srs).filter(v => !v || !v.due || v.due <= Date.now()).length;
     const bar = el("div", { class:"progress" }, [ el("i", { style:`width:${pct}%` }) ]);
 
     return el("div", { class:"card" }, [
       el("div", { class:"hd" }, ["Dein Lernplan ", el("span",{class:"badge"},[fmtDate()]) ]),
-      el("div", { class:"bd grid grid-2" }, [
-        el("div", {}, [
-          el("div", {}, [bar, el("div", { class:"small", style:"margin-top:8px" }, [pct+"%"]) ]),
-          el("div", { class:"hr" }),
-          PlanList(),
-        ]),
-        el("div", {}, [ CardTipsInner(dueCount) ]),
+      el("div", { class:"bd" }, [
+        el("div", {}, [bar, el("div", { class:"small", style:"margin-top:8px" }, [pct+"%"]) ]),
+        el("div", { class:"hr" }),
+        PlanList(),
       ]),
       el("div", { class:"ft" }, [
         el("div", { class:"row" }, [
@@ -742,6 +745,12 @@
     ]);
   }
   function BtnOutline(label, onclick){ return el("button", { class:"btn", onclick }, [label]); }
+
+  function CardTips(){
+    const dueCount = Object.values(state.srs)
+      .filter(v => !v || !v.due || v.due <= Date.now()).length;
+    return CardTipsInner(dueCount);
+  }
 
   function CardTipsInner(dueCount){
     const exam = state.profile.examPrep;
@@ -1020,15 +1029,17 @@
   function openSet(id){
     const set = EXAM_SETS.find(x => x.id === id);
     if (!set) return;
-    const overlay = el("div", { class:"card", style:"margin-top:16px" }, [
+    const body = document.querySelector("#app .body") || document.getElementById("app");
+    const old = body.querySelector(".exam-overlay");
+    if (old) old.remove();
+    const overlay = el("div", { class:"card exam-overlay", style:"margin-top:16px" }, [
       el("div", { class:"hd" }, [set.title]),
       el("div", { class:"bd" }, set.parts.map((p,idx) => ExamPart(p, idx+1, set.parts.length))),
       el("div", { class:"ft" }, [
         el("button", { class:"btn", onclick:()=>{ state.ui.tab="exam"; rerenderBody(); } }, ["Schließen"]),
       ]),
     ]);
-    const body = document.querySelector("#app .body");
-    (body || document.getElementById("app")).appendChild(overlay); // robust
+    body.appendChild(overlay);
   }
   function ExamPart(part, i, total){
     if (part.type === "reading"){
@@ -1086,6 +1097,5 @@
     ]);
   }
 
-  // Initial render
-  render();
+  // Initial render done above
 })();
