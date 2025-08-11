@@ -11,6 +11,7 @@
     } catch (e) { return null; }
   }
   function saveState() {
+    if (!state?.profile?.allowOffline) return;
     try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
   }
 
@@ -19,8 +20,8 @@
     meta: { version: APP_VERSION },
     profile: {
       audience: "de",
-      level: null,          // Nur noch Niveau
-      examPrep: false,      // Prüfungsmodus-Schalter bleibt
+      level: null,        // kein vorausgewähltes Level
+      examPrep: true,     // Prüfungsbereich sichtbar (leer)
       audio: { slow: true, normal: true },
       allowOffline: true,
       feedback: true,
@@ -30,7 +31,7 @@
       scores: {},
     },
     srs: {},                // vocabId -> { reps, interval, ease, due }
-    ui: { tab: "lessons", route: "onboarding", lessonId: null },
+    ui: { tab: "lessons", route: "home", lessonId: null, hideTopbar: false, menuOpen: false, chatOpen: false },
     todayPlan: [],
   };
 
@@ -558,14 +559,18 @@
   }
   function speak(text, opts={}) {
     if (!("speechSynthesis" in window)) return;
-    const u = new SpeechSynthesisUtterance(text);
-    const hu = VOICES.find(v => /hu/i.test(v.lang));
-    if (hu) u.voice = hu, u.lang = hu.lang;
-    else u.lang = "hu-HU";
-    u.rate = opts.rate || 1;
-    u.pitch = opts.pitch || 1;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      const hu = VOICES.find(v => /hu/i.test(v.lang));
+      u.voice = hu || null;
+      u.lang = hu?.lang || "hu-HU";
+      u.rate = opts.rate || 1;
+      u.pitch = opts.pitch || 1;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } catch (e) {
+      // no-op
+    }
   }
 
   // ---------- Utils ----------
@@ -610,62 +615,177 @@
   render();
 
   function render() {
-    clear(root);
-    root.appendChild(Navbar());
-    if (state.ui.route === "onboarding") root.appendChild(ViewOnboarding());
-    else root.appendChild(ViewDashboard());
-  }
+  clear(root);
+  if (!state.ui.hideTopbar) root.appendChild(Navbar());
+
+  if (state.ui.route === "home")       { root.appendChild(ViewHome()); root.appendChild(ChatFab()); return; }
+  if (state.ui.route === "profile")    { root.appendChild(ViewProfile()); root.appendChild(ChatFab()); return; }
+  if (state.ui.route === "vocab")      { root.appendChild(ViewVocabHub()); root.appendChild(ChatFab()); return; }
+  if (state.ui.route === "onboarding") { root.appendChild(ViewOnboarding()); root.appendChild(ChatFab()); return; }
+  if (state.ui.route === "exam")       { root.appendChild(ViewExamInfo()); root.appendChild(ChatFab()); return; }
+
+  root.appendChild(ViewDashboard());
+  root.appendChild(ChatFab());
+}
 
   // ---------- Navbar ----------
   function Navbar(){
-    const tabs = [
-      { id: "lessons", label: "Lektionen" },
-      { id: "trainer", label: "Vokabeltrainer" },
-      { id: "reviews", label: "Wiederholen" },
-      ...(state.profile.examPrep ? [{ id: "exam", label: "Prüfung" }] : []),
-      { id: "settings", label: "Einstellungen" },
-    ];
-    const row = el("div", { class: "nav" }, [
-      el("div", { class: "title" }, [
-        el("div", { class: "logo" }, ["M"]),
-        el("div", { }, [el("span", { class:"mono" }, ["MagyarLab"]), " ", el("span",{class:"badge"},["A1–C2"])]),
-      ]),
-      el("div", { class:"tabs" }, tabs.map(t =>
-        el("button", {
-          class: "tab" + (state.ui.tab === t.id ? " active" : ""),
-          onclick: () => { state.ui.tab = t.id; state.ui.route = "app"; saveState(); rerenderBody(); }
-        }, [t.label])
-      )),
-    ]);
-    return row;
-  }
+  const wrap = el("div", { class:"nav topbar" + (state.ui.hideTopbar ? " hidden" : "") }, [
+    el("div", { class: "title", onclick: ()=>{ state.ui.route="home"; state.ui.lessonId=null; saveState(); render(); } }, [
+      el("div", { class: "logo" }, ["M"]),
+      el("div", {}, [ el("span", { class:"mono" }, ["MagyarLab"]), " ", el("span",{class:"badge"},["A1–C2"]) ]),
+    ]),
+    el("div", { class:"menu-wrap" }, [
+      el("button", { class:"menu-btn", onclick:()=>{
+        state.ui.menuOpen = !state.ui.menuOpen; saveState(); render();
+      }}, ["Menü"]),
+      state.ui.menuOpen ? el("div", { class:"dropdown" }, [
+        el("button", { class:"item", onclick:()=>{ state.ui.route="profile"; state.ui.menuOpen=false; saveState(); render(); } }, ["Profil"]),
+        el("button", { class:"item", onclick:()=>{ state.ui.route="app"; state.ui.tab="settings"; state.ui.menuOpen=false; saveState(); render(); } }, ["Einstellungen"]),
+        el("button", { class:"item", onclick:()=>{ state.ui.route="app"; state.ui.tab="lessons"; state.ui.menuOpen=false; saveState(); render(); } }, ["Lektionen"]),
+        el("button", { class:"item", onclick:()=>{ state.ui.route="vocab"; state.ui.menuOpen=false; saveState(); render(); } }, ["Meine Vokabeln"]),
+      ]) : null
+    ])
+  ]);
+  return wrap;
+}
 
-  function rerenderBody(){
-    const body = document.querySelector("#app .body");
-    if (!body) { render(); return; }
-    const parent = body.parentElement;
-    parent.removeChild(body);
-    parent.appendChild(ViewRouter());
-  }
-
-  // ---------- Root content ----------
-  function ViewDashboard(){
-    const wrap = el("div", { class:"body grid grid-2", style:"margin-top:16px" }, [
-      CardDayPlan(),
-      CardTips(),
-      el("div", { class:"grid grid-1", style:"grid-column: 1 / -1" }, [ ViewRouter() ]),
-    ]);
-    return wrap;
-  }
+function rerenderBody(){
+  const body = document.querySelector("#app .body");
+  if (!body) { render(); return; }
+  const parent = body.parentElement;
+  if (!parent) { render(); return; }
+  parent.removeChild(body);
+  parent.appendChild(ViewRouter());
+}
 
   function ViewRouter(){
-    if (state.ui.tab === "lessons") return LessonList();
-    if (state.ui.tab === "trainer") return Trainer();
-    if (state.ui.tab === "reviews") return Reviews();
-    if (state.ui.tab === "settings") return Settings();
-    if (state.profile.examPrep && state.ui.tab === "exam") return ExamHome();
-    return el("div");
-  }
+  // Home/Profile/Vocab/Exam handled im Top-Router
+  if (state.ui.tab === "lessons") return LessonList();
+  if (state.ui.tab === "trainer") return Trainer();
+  if (state.ui.tab === "reviews") return Reviews();
+  if (state.ui.tab === "settings") return Settings();
+  return el("div");
+}
+
+  
+function ViewHome(){
+  const lvl = state.profile.level;
+  const lessons = lvl ? (CURRICULUM[lvl] || []) : [];
+  const lessonIds = new Set(lessons.map(l => l.id));
+  const completedCount = Object.keys(state.progress.completedLessons || {}).filter(id => lessonIds.has(id)).length;
+  const total = lessons.length;
+  const pct = total ? Math.round((completedCount / total) * 100) : 0;
+
+  const levelBtns = ["A1","A2","B1","B2","C1","C2"].map(L =>
+    el("button", {
+      class: "level-btn" + (lvl===L ? " active" : ""),
+      onclick: ()=>{ state.profile.level = L; saveState(); render(); }
+    }, [L])
+  );
+
+  return el("div", { class:"body grid grid-1", style:"margin-top:16px" }, [
+    el("div", { class:"hero" }, [
+      el("div", { class:"row", style:"justify-content:space-between; align-items:flex-start; flex-wrap:wrap" }, [
+        el("div", {}, [
+          el("div", { style:"font-size:24px; font-weight:800; margin-bottom:6px" }, ["Willkommen bei MagyarLab"]),
+          el("div", { class:"small" }, ["Wähle zuerst dein Niveau – Inhalte sind derzeit nur für B2 verfügbar."]),
+        ]),
+        el("div", { class:"home-progress" }, [
+          el("div", { class:"progress", style:"width:160px" }, [ el("i", { style:`width:${pct}%` }) ]),
+          el("span", { class:"small" }, [ lvl ? `${pct}% in ${lvl}` : "Kein Niveau gewählt" ])
+        ])
+      ]),
+      el("div", { class:"hr" }),
+      el("div", {}, [
+        el("label", {}, ["Niveau wählen"]),
+        el("div", { class:"level-grid", style:"margin-top:8px" }, levelBtns),
+        el("div", { class:"small" }, ["Freundlicher Hinweis: Inhalte für andere Niveaus folgen."])
+      ])
+    ]),
+
+    el("div", { class:"link-cards" }, [
+      el("div", { class:"card link-card", onclick:()=>{ 
+        if (state.profile.level && state.profile.level!=="B2") return openGateModal();
+        state.ui.route="app"; state.ui.tab="lessons"; saveState(); render();
+      } }, [
+        el("div", { class:"hd" }, [ el("div",{class:"icon"},["📚"]), "Lektionen" ]),
+        el("div", { class:"bd small" }, ["Zum Lektions-Grid."])
+      ]),
+      el("div", { class:"card link-card", onclick:()=>{ state.ui.route="vocab"; saveState(); render(); } }, [
+        el("div", { class:"hd" }, [ el("div",{class:"icon"},["🧠"]), "Meine Vokabeln" ]),
+        el("div", { class:"bd small" }, ["Übersicht, Tabelle, Abfrage."])
+      ]),
+      el("div", { class:"card link-card", onclick:()=>{ 
+        state.ui.route="exam"; saveState(); render();
+      } }, [
+        el("div", { class:"hd" }, [ el("div",{class:"icon"},["🎯"]), "Prüfungsvorbereitung" ]),
+        el("div", { class:"bd small" }, ["Infos & Struktur – Inhalte folgen."])
+      ]),
+    ]),
+
+    el("div", { class:"footer" }, ["© MagyarLab – Startseite"])
+  ]);
+}
+
+function openGateModal(){
+  const m = el("div", { class:"modal-backdrop", onclick:(e)=>{ if (e.target===m) m.remove(); } }, [
+    el("div", { class:"modal-card" }, [
+      el("div", { class:"hd" }, ["Noch keine Inhalte"]),
+      el("div", { class:"bd" }, ["Für dein gewähltes Niveau sind derzeit keine Lektionen verfügbar. Bitte wähle B2 oder schaue später wieder vorbei."] ),
+      el("div", { class:"ft" }, [
+        el("button", { class:"btn", onclick:()=>m.remove() }, ["Schließen"]),
+        el("button", { class:"btn primary", onclick:()=>{ state.profile.level="B2"; saveState(); m.remove(); render(); } }, ["Zu B2 wechseln"])
+      ])
+    ])
+  ]);
+  document.body.appendChild(m);
+}
+
+
+function ViewProfile(){
+  const lvl = state.profile.level || "—";
+  const lessons = (lvl && CURRICULUM[lvl]) ? CURRICULUM[lvl] : [];
+  const lessonIds = new Set(lessons.map(l => l.id));
+  const completed = Object.keys(state.progress.completedLessons || {}).filter(id => lessonIds.has(id)).length;
+
+  return el("div", { class:"body grid grid-1", style:"margin-top:16px; max-width: 960px; margin-inline:auto" }, [
+    el("div", { class:"card" }, [
+      el("div", { class:"hd" }, ["Profil"]),
+      el("div", { class:"bd grid grid-2" }, [
+        el("div", {}, [
+          el("div", { class:"row", style:"align-items:center; gap:12px" }, [
+            el("div", { class:"logo", style:"width:48px; height:48px; border-radius:12px; display:grid; place-items:center; color:'#fff'; background:'var(--brand)'" }, ["M"]),
+            el("div", {}, [
+              el("div", { style:"font-weight:700" }, ["Nutzerkonto"]),
+              el("div", { class:"small" }, ["Login folgt – lokale Demo"])
+            ])
+          ]),
+          el("div", { class:"hr" }),
+          el("div", { class:"small" }, ["Aktuelles Niveau"]),
+          el("div", { class:"chips", style:"margin-top:6px" }, ["A1","A2","B1","B2","C1","C2"].map(L =>
+            el("button", {
+              class:"level-btn" + (lvl===L ? " active" : ""),
+              onclick: ()=>{ state.profile.level=L; saveState(); render(); }
+            }, [L])
+          )),
+        ]),
+        el("div", {}, [
+          el("div", { class:"small" }, ["Fortschritt"]),
+          el("div", { class:"progress", style:"margin-top:6px" }, [
+            el("i", { style: `width:${(lessons.length? Math.round((completed/lessons.length)*100) : 0)}%` })
+          ]),
+          el("div", { class:"small" }, [`${completed}/${lessons.length} Lektionen erledigt (Niveau ${lvl})`]),
+          el("div", { class:"hr" }),
+          el("div", { class:"small" }, ["Streak, Lernzeit & Abzeichen werden später ergänzt."]),
+        ]),
+      ]),
+      el("div", { class:"ft" }, [
+        el("button", { class:"btn", onclick: ()=>{ state.ui.route="home"; saveState(); render(); } }, ["Zur Startseite"]),
+      ])
+    ])
+  ]);
+}
 
   // ---------- Onboarding (nur Niveau) ----------
   function ViewOnboarding(){
@@ -713,23 +833,20 @@
 
     // Fix: Fortschritt nur über das aktuelle Niveau
     const lessonIds = new Set(lessons.map(l => l.id));
-    const completedCount = Object.keys(state.progress.completedLessons)
+    const completedCount = Object.keys(state.progress.completedLessons || {})
       .filter(id => lessonIds.has(id)).length;
     const total = lessons.length;
     const pct = total ? Math.round((completedCount/total)*100) : 0;
 
-    const dueCount = Object.values(state.srs).filter(v => !v.due || v.due <= Date.now()).length;
+    const dueCount = Object.values(state.srs).filter(v => !v || !v.due || v.due <= Date.now()).length;
     const bar = el("div", { class:"progress" }, [ el("i", { style:`width:${pct}%` }) ]);
 
     return el("div", { class:"card" }, [
       el("div", { class:"hd" }, ["Dein Lernplan ", el("span",{class:"badge"},[fmtDate()]) ]),
-      el("div", { class:"bd grid grid-2" }, [
-        el("div", {}, [
-          el("div", {}, [bar, el("div", { class:"small", style:"margin-top:8px" }, [pct+"%"]) ]),
-          el("div", { class:"hr" }),
-          PlanList(),
-        ]),
-        el("div", {}, [ CardTipsInner(dueCount) ]),
+      el("div", { class:"bd" }, [
+        el("div", {}, [bar, el("div", { class:"small", style:"margin-top:8px" }, [pct+"%"]) ]),
+        el("div", { class:"hr" }),
+        PlanList(),
       ]),
       el("div", { class:"ft" }, [
         el("div", { class:"row" }, [
@@ -742,6 +859,12 @@
     ]);
   }
   function BtnOutline(label, onclick){ return el("button", { class:"btn", onclick }, [label]); }
+
+  function CardTips(){
+    const dueCount = Object.values(state.srs)
+      .filter(v => !v || !v.due || v.due <= Date.now()).length;
+    return CardTipsInner(dueCount);
+  }
 
   function CardTipsInner(dueCount){
     const exam = state.profile.examPrep;
@@ -775,24 +898,40 @@
   }
 
   // ---------- Lessons ----------
-  function LessonList(){
-    const lvl = state.profile.level || "B2";
-    const lessons = CURRICULUM[lvl] || [];
-    const grid = el("div", { class:"card" }, [
-      el("div", { class:"hd" }, ["Lektionen – ", lvl]),
-      el("div", { class:"bd grid grid-3" }, lessons.map(l => el("div", { class:"card" }, [
-        el("div", { class:"hd" }, [l.title]),
-        el("div", { class:"bd" }, [
-          el("div", { class:"chips" }, l.grammar.map(g => el("span", { class:"chip" }, [g.name]))),
-        ]),
-        el("div", { class:"ft" }, [
-          el("button", { class:"btn primary block", onclick:()=>{ state.ui.lessonId = l.id; saveState(); rerenderBody(); } }, ["Öffnen"]),
-        ]),
-      ]))),
+  
+function LessonList(){
+  const lvl = state.profile.level;
+  if (!lvl) return el("div", { class:"card", style:"margin-top:16px" }, [
+    el("div",{class:"hd"},["Kein Niveau gewählt"]),
+    el("div",{class:"bd"},["Bitte wähle auf der Startseite ein Niveau."]),
+    el("div",{class:"ft"},[ el("button",{class:"btn", onclick:()=>{ state.ui.route="home"; saveState(); render(); }},["Zur Startseite"]) ])
+  ]);
+
+  if (lvl !== "B2") {
+    return el("div", { class:"card", style:"margin-top:16px" }, [
+      el("div", { class:"hd" }, [`Lektionen – ${lvl}`]),
+      el("div", { class:"bd" }, ["Keine Lektionen verfügbar."]),
+      el("div", { class:"ft" }, [
+        el("button",{class:"btn", onclick:()=>openGateModal()},["Hinweis anzeigen"]),
+        el("button",{class:"btn", onclick:()=>{ state.ui.route="home"; saveState(); render(); }},["Zur Startseite"]),
+      ])
     ]);
-    if (state.ui.lessonId) grid.appendChild(LessonView());
-    return grid;
   }
+
+  // ... (bestehendes B2-Grid bleibt unverändert)
+  const lessons = CURRICULUM["B2"] || [];
+  const grid = el("div", { class:"card" }, [
+    el("div", { class:"hd" }, ["Lektionen – B2"]),
+    el("div", { class:"bd grid grid-2" }, lessons.map(l => el("div", { class:"card" }, [
+      el("div", { class:"hd" }, [l.title]),
+      el("div", { class:"bd" }, [ el("div", { class:"chips" }, l.grammar.map(g => el("span", { class:"chip" }, [g.name]))) ]),
+      el("div", { class:"ft" }, [ el("button", { class:"btn primary block", onclick:()=>{ state.ui.lessonId = l.id; state.ui.hideTopbar = true; saveState(); rerenderBody(); } }, ["Öffnen"]) ])
+    ]))),
+  ]);
+  if (state.ui.lessonId) grid.appendChild(LessonView());
+  return grid;
+}
+
 
   function lessonById(id){
     for (const lvl of Object.keys(CURRICULUM)){
@@ -812,10 +951,28 @@
     return null;
   }
 
-  function LessonView(){
-    const l = lessonById(state.ui.lessonId);
-    if (!l) return el("div");
-    const bd = el("div", { class:"bd grid grid-2" }, [
+  
+function LessonView(){
+  state.ui.hideTopbar = true; saveState();
+  const l = lessonById(state.ui.lessonId);
+  if (!l) return el("div");
+  const exitMenuBtn = el("button", { class:"btn", style:"position:absolute; right:16px; top:16px; z-index:25", onclick:()=>{
+    const m = el("div", { class:"modal-backdrop", onclick:(e)=>{ if (e.target===m) m.remove(); } }, [
+      el("div", { class:"modal-card" }, [
+        el("div", { class:"hd" }, ["Lektion"]),
+        el("div", { class:"bd" }, ["Möchtest du fortsetzen oder die Lektion verlassen? Vor dem Verlassen Fortschritt speichern?"] ),
+        el("div", { class:"ft" }, [
+          el("button", { class:"btn", onclick:()=>m.remove() }, ["Fortsetzen"]),
+          el("button", { class:"btn", onclick:()=>{ state.progress.completedLessons[l.id] = true; saveState(); m.remove(); } }, ["Speichern"]),
+          el("button", { class:"btn danger", onclick:()=>{ m.remove(); state.ui.lessonId=null; state.ui.hideTopbar=false; saveState(); render(); } }, ["Verlassen"])
+        ])
+      ])
+    ]);
+    document.body.appendChild(m);
+  }}, ["Menü"]);
+  const absWrap = el("div", { style:"position:relative" }, []);
+  absWrap.appendChild(exitMenuBtn);
+  const bd = el("div", { class:"bd grid grid-2" }, [
       // links: Erklärung + Beispiele
       el("div", {}, [
         el("h3", {}, ["Grammatik (deutsch erklärt)"]),
@@ -845,28 +1002,27 @@
       ]),
     ]);
 
-    const card = el("div", { class:"card", style:"margin-top:16px" }, [
+  const card = el("div", { class:"card", style:"margin-top:16px" }, [
       el("div", { class:"hd" }, [l.title]),
       bd,
       el("div", { class:"ft" }, [
-        el("button", { class:"btn", onclick: ()=>{ state.ui.lessonId=null; saveState(); rerenderBody(); } }, ["Zurück"]),
         el("button", { class:"btn ok", onclick: markComplete }, ["Lektion als erledigt markieren"]),
       ]),
     ]);
+  absWrap.appendChild(card);
+  return absWrap;
 
-    function markComplete(){
+  function markComplete(){
       state.progress.completedLessons[l.id] = true;
       saveState(); rebuildPlan(); rerenderBody();
     }
-    function addVocabToSRS(){
+  function addVocabToSRS(){
       (l.vocab||[]).forEach(v => {
         if (!state.srs[v.id]) state.srs[v.id] = { reps:0, interval:0, ease:2.5, due: Date.now() };
       });
       saveState(); rebuildPlan(); rerenderBody();
     }
-
-    return card;
-  }
+}
 
   function renderExercises(list){
     return list.map(ex => {
@@ -1020,15 +1176,17 @@
   function openSet(id){
     const set = EXAM_SETS.find(x => x.id === id);
     if (!set) return;
-    const overlay = el("div", { class:"card", style:"margin-top:16px" }, [
+    const body = document.querySelector("#app .body") || document.getElementById("app");
+    const old = body.querySelector(".exam-overlay");
+    if (old) old.remove();
+    const overlay = el("div", { class:"card exam-overlay", style:"margin-top:16px" }, [
       el("div", { class:"hd" }, [set.title]),
       el("div", { class:"bd" }, set.parts.map((p,idx) => ExamPart(p, idx+1, set.parts.length))),
       el("div", { class:"ft" }, [
         el("button", { class:"btn", onclick:()=>{ state.ui.tab="exam"; rerenderBody(); } }, ["Schließen"]),
       ]),
     ]);
-    const body = document.querySelector("#app .body");
-    (body || document.getElementById("app")).appendChild(overlay); // robust
+    body.appendChild(overlay);
   }
   function ExamPart(part, i, total){
     if (part.type === "reading"){
@@ -1086,6 +1244,175 @@
     ]);
   }
 
-  // Initial render
-  render();
-})();
+  ;
+function ViewExamInfo(){
+  return el("div", { class:"body grid grid-1", style:"margin-top:16px" }, [
+    el("div", { class:"card" }, [
+      el("div", { class:"hd" }, ["Prüfungsvorbereitung"]),
+      el("div", { class:"bd" }, [
+        "Hier erscheinen bald Übungssätze im Stil ECL/TELC. Der Bereich ist vorbereitet, Inhalte folgen."
+      ]),
+      el("div", { class:"ft" }, [
+        el("button", { class:"btn", onclick:()=>{ state.ui.route="home"; saveState(); render(); } }, ["Zur Startseite"])
+      ])
+    ])
+  ]);
+}
+
+const VOCAB_SETS = {
+  // B2: [ { id:"b2-v1", title:"Thema 1", entries:[ {de, hu, deEx, huEx}, ... ] }, ... ]
+};
+
+function ViewVocabHub(){
+  const lvl = state.profile.level;
+  if (!lvl) return el("div", { class:"card", style:"margin-top:16px" }, [
+    el("div",{class:"hd"},["Meine Vokabeln"]),
+    el("div",{class:"bd"},["Bitte wähle auf der Startseite ein Niveau."]),
+    el("div",{class:"ft"},[ el("button",{class:"btn",onclick:()=>{ state.ui.route="home"; saveState(); render(); }},["Zur Startseite"]) ])
+  ]);
+  if (lvl !== "B2") return el("div", { class:"card", style:"margin-top:16px" }, [
+    el("div",{class:"hd"},[`Meine Vokabeln – ${lvl}`]),
+    el("div",{class:"bd"},["Keine Lektionen verfügbar."]),
+    el("div",{class:"ft"},[ el("button",{class:"btn",onclick:()=>openGateModal()},["Hinweis anzeigen"]) ])
+  ]);
+
+  const sets = (VOCAB_SETS["B2"] || []);
+  if (!sets.length) {
+    return el("div", { class:"card", style:"margin-top:16px" }, [
+      el("div",{class:"hd"},["Meine Vokabeln – B2"]),
+      el("div",{class:"bd"},["Bald verfügbar: 10 Lektionen × 30 Vokabeln."]),
+      el("div",{class:"ft"},[
+        el("button",{class:"btn",onclick:()=>{ state.ui.route="home"; saveState(); render(); }},["Zur Startseite"])
+      ])
+    ]);
+  }
+
+  return el("div", { class:"grid grid-2", style:"margin-top:16px" },
+    sets.map(s => VocabSetCard(s))
+  );
+}
+
+function VocabSetCard(set){
+  return el("div", { class:"card" }, [
+    el("div", { class:"hd" }, [ set.title ]),
+    el("div", { class:"bd small" }, [`${(set.entries||[]).length} Einträge`]),
+    el("div", { class:"ft" }, [
+      el("button", { class:"btn", onclick:()=>openVocabTable(set) }, ["Tabelle"]),
+      el("button", { class:"btn primary", onclick:()=>openVocabQuiz(set) }, ["Abfrage"])
+    ])
+  ]);
+}
+
+function openVocabTable(set){
+  const pageSize = 30; let page = 0;
+  const entries = set.entries || [];
+  function pageView(){
+    const start = page*pageSize, end = Math.min(start+pageSize, entries.length);
+    const rows = entries.slice(start,end).map(e => el("div", { class:"example" }, [
+      el("div", {}, [
+        el("div",{class:"de"},[e.de]),
+        el("div",{class:"hu"},[e.hu]),
+        el("div",{class:"de small"},[e.deEx]),
+        el("div",{class:"hu small"},[e.huEx]),
+      ]),
+      el("div", { class:"row" }, [
+        el("button", { class:"btn icon", onclick:()=>speak(e.de) }, ["🔊 DE"]),
+        el("button", { class:"btn icon", onclick:()=>speak(e.hu) }, ["🔊 HU"]),
+      ])
+    ]));
+    return el("div", {}, rows);
+  }
+
+  const overlay = el("div",{class:"modal-backdrop"},[
+    el("div",{class:"modal-card"},[
+      el("div",{class:"hd"},[set.title," – Tabelle"]),
+      el("div",{class:"bd"},[ pageView() ]),
+      el("div",{class:"ft"},[
+        el("button",{class:"btn",onclick:()=>{ if(page>0){page--; rerender();} }},["Zurück"]),
+        el("button",{class:"btn",onclick:()=>{ if((page+1)*pageSize<entries.length){page++; rerender();} }},["Weiter"]),
+        el("div",{style:"flex:1"}), 
+        el("button",{class:"btn",onclick:()=>overlay.remove()},["Schließen"]),
+      ])
+    ])
+  ]);
+  function rerender(){ overlay.remove(); openVocabTable(set); }
+  document.body.appendChild(overlay);
+}
+
+function openVocabQuiz(set){
+  const all = set.entries || []; let mode = "all";
+  let pool = [...all]; let idx = 0;
+  const wrong = new Set(), right = new Set();
+  let direction = "DE2HU";
+
+  function cardView(){
+    const cur = pool[idx];
+    if(!cur) return el("div",{},["Fertig – Statistik folgt."]);
+    const q = direction==="DE2HU" ? cur.de : cur.hu;
+    const a = direction==="DE2HU" ? cur.hu : cur.de;
+    const input = el("input",{class:"input",placeholder:"Antwort"});
+    const res = el("div",{class:"small"});
+    return el("div",{},[
+      el("div",{class:"hu",style:"font-size:22px; font-weight:800; margin-bottom:8px"},[q]),
+      input,
+      el("div",{class:"row",style:"margin-top:8px"},[
+        el("button",{class:"btn",onclick:()=>{ speak(q); }},["🔊 Frage"]),
+        el("button",{class:"btn",onclick:()=>{ speak(a); }},["🔊 Lösung"]),
+        el("button",{class:"btn",onclick:()=>{ res.textContent = `Lösung: ${a}`; }},["Lösung anzeigen"]),
+        el("button",{class:"btn ok",onclick:()=>{
+          const ok = input.value.trim().toLowerCase() === a.trim().toLowerCase();
+          if(ok){ right.add(cur); } else { wrong.add(cur); }
+          idx = (idx+1) % pool.length;
+          overlay.remove(); openVocabQuiz(set);
+        }},["Prüfen"])
+      ]),
+      el("div",{class:"small",style:"margin-top:6px"},[`Richtig: ${right.size} • Falsch: ${wrong.size}`]),
+      res
+    ]);
+  }
+
+  const overlay = el("div",{class:"modal-backdrop"},[
+    el("div",{class:"modal-card"},[
+      el("div",{class:"hd"},[set.title," – Abfrage"]),
+      el("div",{class:"bd grid"},[
+        el("div",{class:"row",style:"gap:8px; flex-wrap:wrap"},[
+          el("button",{class:"btn"+(direction==="DE2HU"?" primary":""),onclick:()=>{ direction="DE2HU"; overlay.remove(); openVocabQuiz(set); }},["DE→HU"]),
+          el("button",{class:"btn"+(direction==="HU2DE"?" primary":""),onclick:()=>{ direction="HU2DE"; overlay.remove(); openVocabQuiz(set); }},["HU→DE"]),
+          el("button",{class:"btn",onclick:()=>{ mode="all"; pool=[...all]; idx=0; overlay.remove(); openVocabQuiz(set); }},["Alle"]),
+          el("button",{class:"btn",onclick:()=>{ mode="right"; pool=[...right]; idx=0; overlay.remove(); openVocabQuiz(set); }},["Richtige"]),
+          el("button",{class:"btn",onclick:()=>{ mode="wrong"; pool=[...wrong]; idx=0; overlay.remove(); openVocabQuiz(set); }},["Falsche"]),
+        ]),
+        cardView()
+      ]),
+      el("div",{class:"ft"},[
+        el("button",{class:"btn",onclick:()=>overlay.remove()},["Schließen"]),
+      ])
+    ])
+  ]);
+  document.body.appendChild(overlay);
+}
+
+function ChatFab(){
+  const open = state.ui.chatOpen;
+  const panel = el("div",{ class:"chat-panel"+(open?" open":"" ) },[
+    el("div",{class:"hd"},["KI-Hilfe (Demo)"]),
+    el("div",{class:"bd"},[
+      el("div",{class:"small"},[
+        "Stelle Fragen zu deinem Niveau (", state.profile.level || "—", ") und Seite (", state.ui.route, "). ",
+        "Profil-Daten werden später einbezogen."
+      ])
+    ]),
+    el("div",{class:"ft"},[
+      el("input",{class:"input",placeholder:"Frage eingeben (Demo)"}),
+      el("button",{class:"btn"},["Senden"])
+    ])
+  ]);
+  const btn = el("div",{class:"fab"},[
+    el("button",{class:"btn",onclick:()=>{ state.ui.chatOpen = !state.ui.chatOpen; saveState(); render(); }},[ state.ui.chatOpen ? "✖︎" : "Chat" ])
+  ]);
+  const wrap = el("div");
+  wrap.appendChild(panel); wrap.appendChild(btn);
+  return wrap;
+}
+// Initial render done above
+})()
