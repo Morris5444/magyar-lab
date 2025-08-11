@@ -62,6 +62,8 @@
   })();
 
   // ---------- Curriculum ----------
+    if (!state.profile.audioMode) state.profile.audioMode = "normal";
+
   const CURRICULUM = {
     A1: [
       {
@@ -564,11 +566,18 @@
       const hu = VOICES.find(v => /hu/i.test(v.lang));
       u.voice = hu || null;
       u.lang = hu?.lang || "hu-HU";
-      u.rate = opts.rate || 1;
-      u.pitch = opts.pitch || 1;
+      u.rate = (opts.rate != null ? opts.rate : (typeof getAudioRate==="function" ? getAudioRate() : 1));
+u.pitch = opts.pitch || 1;
       speechSynthesis.cancel();
       speechSynthesis.speak(u);
-    } catch (e) {
+    }
+  function getAudioRate(){
+    try{
+      const mode = (state && state.profile && state.profile.audioMode) || "normal";
+      return mode === "slow" ? 0.85 : 1.0;
+    }catch(e){ return 1.0; }
+  }
+ catch (e) {
       // no-op
     }
   }
@@ -690,7 +699,7 @@
     // Wenn im Lessons-Tab eine Lektion offen ist: nur die Lektion zeigen
     if (state.ui.tab === "lessons" && state.ui.lessonId){
       return el("div", { class:"body grid grid-1", style:"margin-top:16px" }, [
-        LessonView()
+        LessonViewNew()
       ]);
     }
 
@@ -972,7 +981,7 @@
     ]);
 
     // WICHTIG: Wenn eine Lektion offen ist, nur die Lektion anzeigen – NICHT Grid + Lesson
-    return state.ui.lessonId ? LessonView() : grid;
+    return state.ui.lessonId ? LessonViewNew() : grid;
   }
 
   function lessonById(id){
@@ -993,7 +1002,7 @@
     return null;
   }
 
-  function LessonView(){
+  function LessonViewNew(){
     state.ui.hideTopbar = true; saveState();
     const l = lessonById(state.ui.lessonId);
     if (!l) return el("div");
@@ -1119,6 +1128,215 @@
       el("div", { class:"ft small" }, ["Hinweis: In echt als Drag-&-Drop geplant; hier als Vorschau."]),
     ]);
   }
+  // ---------- NEW Lesson View (per Morris' spec) ----------
+  function LessonViewNew(){
+    state.ui.hideTopbar = true; saveState();
+    const l = lessonById(state.ui.lessonId);
+    if (!l) return el("div");
+
+    // Track lesson task offset per lesson
+    if (!state.ui.lessonTaskOffset) state.ui.lessonTaskOffset = {};
+    if (!Number.isInteger(state.ui.lessonTaskOffset[l.id])) state.ui.lessonTaskOffset[l.id] = 0;
+
+    // Build intro text
+    const intro = getLessonIntro(l) || "Kurze Einführung in die Grammatik. Unten findest du eine ausführliche Erklärung, 5 Beispiele und 3 Aufgaben – weitere Aufgaben kannst du jederzeit nachladen.";
+
+    // Ensure 5 examples
+    const examples = ensureFiveExamples(l);
+
+    // Build 15 tasks pool
+    const pool = buildLessonTasks(l);
+    const start = state.ui.lessonTaskOffset[l.id] % pool.length;
+    const current3 = [ pool[start], pool[(start+1)%pool.length], pool[(start+2)%pool.length] ];
+
+    // Breadcrumb + audio mode chips
+    const audioChips = el("div", { class:"chips" }, [
+      el("span", { class:"chip" }, ["Hörmodus:"]),
+      el("button", { class: "btn" + (state.profile.audioMode==="slow"?" ok":""), onclick:()=>{ state.profile.audioMode="slow"; saveState(); render(); } }, ["Langsam"]),
+      el("button", { class: "btn" + (state.profile.audioMode!=="slow"?" ok":""), onclick:()=>{ state.profile.audioMode="normal"; saveState(); render(); } }, ["Normal"]),
+    ]);
+
+    const breadcrumb = el("div", { class:"small" }, ["Bereich: Lektionen › B2 › ", l.title]);
+
+    const exitMenuBtn = el("button", { class:"btn", style:"position:absolute; right:16px; top:16px; z-index:25", onclick:()=>{
+      const m = el("div", { class:"modal-backdrop", onclick:(e)=>{ if (e.target===m) m.remove(); } }, [
+        el("div", { class:"modal-card" }, [
+          el("div", { class:"hd" }, ["Lektion"]),
+          el("div", { class:"bd" }, ["Möchtest du fortsetzen oder die Lektion verlassen? Vor dem Verlassen Fortschritt speichern?"] ),
+          el("div", { class:"ft" }, [
+            el("button", { class:"btn", onclick:()=>m.remove() }, ["Fortsetzen"]),
+            el("button", { class:"btn", onclick:()=>{ state.progress.completedLessons[l.id] = true; saveState(); m.remove(); } }, ["Speichern"]),
+            el("button", { class:"btn danger", onclick:()=>{ m.remove(); state.ui.lessonId=null; state.ui.hideTopbar=false; saveState(); render(); } }, ["Verlassen"])
+          ])
+        ])
+      ]);
+      document.body.appendChild(m);
+    }}, ["Menü"]);
+
+    const absWrap = el("div", { style:"position:relative" }, []);
+    absWrap.appendChild(exitMenuBtn);
+
+    // Einleitung oben (inkl. Gyakorlás Hinweis)
+    const introCard = el("div", { class:"card" }, [
+      el("div", { class:"hd" }, [l.title]),
+      el("div", { class:"bd" }, [
+        breadcrumb,
+        el("div", { class:"hr" }),
+        el("div", {}, [intro]),
+        el("div", { class:"hr" }),
+        el("div", { class:"row" }, [
+          el("div", { class:"badge" }, ["Gyakorlás: 3 von 15 Aufgaben werden angezeigt"]),
+          el("button", { class:"btn primary", onclick:()=>{ document.getElementById("tasks-anchor")?.scrollIntoView({behavior:'smooth'}); } }, ["Zu den Aufgaben"]),
+          audioChips
+        ]),
+      ]),
+    ]);
+
+    // Grammatik – Tabelle/Übersicht
+    const grammarTable = el("div", { class:"card" }, [
+      el("div", { class:"hd" }, ["Grammatik – ausführliche Erklärung (deutsch)"]),
+      el("div", { class:"bd" }, [
+        el("div", { class:"grid" }, l.grammar.map(g => el("div", { class:"example" }, [ el("div", { class:"de" }, [g.name]) ]))),
+        el("div", { class:"small" }, ["Hinweis: Visualisierungen/Graphen werden später ergänzt."])
+      ]),
+    ]);
+
+    // Beispiele (5)
+    const exampleCard = el("div", { class:"card" }, [
+      el("div", { class:"hd" }, ["Beispiele (5)"]),
+      el("div", { class:"bd" }, examples.map(ex => el("div", { class:"example" }, [
+        el("div", {}, [ el("div", { class:"hu" }, [ex.hu]), el("div", { class:"de" }, [ex.de]) ]),
+        el("button", { class:"btn icon", onclick:()=>speak(ex.hu) }, ["🔊"]),
+      ]))),
+    ]);
+
+    // Aufgaben (3 sichtbar, weitere nachladen)
+    const tasksCard = el("div", { class:"card", id:"tasks-anchor" }, [
+      el("div", { class:"hd" }, ["Aufgaben (3)"]),
+      el("div", { class:"bd grid" }, current3.map(t => renderTask(t))),
+      el("div", { class:"ft" }, [
+        el("button", { class:"btn", onclick:()=>{ state.ui.lessonTaskOffset[l.id] = (state.ui.lessonTaskOffset[l.id] + 3) % pool.length; saveState(); render(); } }, ["Neue 3 Aufgaben"]),
+        el("button", { class:"btn", onclick:()=>{ state.ui.lessonTaskOffset[l.id] = 0; saveState(); render(); } }, ["Zurücksetzen"]),
+        el("div", { class:"small" }, [`${start+1}–${start+3} von ${pool.length}`])
+      ]),
+    ]);
+
+    const page = el("div", { class:"body grid grid-1", style:"margin-top:16px" }, [
+      introCard,
+      grammarTable,
+      exampleCard,
+      tasksCard,
+    ]);
+    absWrap.appendChild(page);
+    return absWrap;
+
+    function renderTask(t){
+      if (t.kind === "gap"){
+        return el("div", { class:"card exercise" }, [
+          el("div", { class:"hd" }, [t.prompt || "Ergänze:"]),
+          el("div", { class:"bd grid" }, [ (t.items||[]).map((it)=>{
+            let show=false; const ans = el("input",{class:"input",placeholder:"Antwort"});
+            const sol = el("div",{class:"small",style:"display:none"},["Lösung: ", it.a]);
+            return el("div", { class:"item" }, [
+              el("div", {}, [it.q]),
+              el("div", { class:"row" }, [
+                ans,
+                el("button", { class:"btn", onclick:()=>{ show = !show; sol.style.display = show ? "" : "none"; } }, ["💡"]),
+              ]),
+              sol
+            ]);
+          }) ])
+        ]);
+      } else if (t.kind === "mc"){
+        const opts = t.options || [];
+        const body = el("div", { class:"bd" }, opts.map((opt,i) => el("button", { class:"btn", onclick:()=>{
+          [...body.children].forEach((btn, idx) => { btn.className = "btn" + (idx === t.answer ? " ok" : (idx===i ? " danger" : "")); });
+        }}, [opt])));
+        return el("div", { class:"card" }, [ el("div",{class:"hd"},[t.prompt || "Wähle:"]), body ]);
+      } else if (t.kind === "match"){
+        return el("div", { class:"card" }, [
+          el("div",{class:"hd"},[t.prompt || "Ordne zu:"]),
+          el("div",{class:"bd grid"}, (t.pairs||[]).map(p => el("div",{class:"row"},[ el("div",{},[`${p.left}-`]), el("div",{class:"badge"},[p.right]) ]))),
+          el("div",{class:"ft small"},["Hinweis: Vorschau (Drag&Drop folgt)."]),
+        ]);
+      }
+      return el("div");
+    }
+  }
+
+  function getLessonIntro(lesson){
+    const map = {
+      "b2-u1": "Vokalharmonie auffrischen und Sonderfälle sicher erkennen. Wir trainieren die Auswahl der passenden Endung im Satzfluss.",
+      "b2-u2": "Entscheidest du indefinit oder definit? Hier festigst du die Wahl anhand von Artikeln, Pronomen und Objektstatus.",
+      "b2-u3": "Definites Präsens bei regelmäßigen Verben – klare Formen, saubere Endungen, typische Stolpersteine.",
+      "b2-u4": "s/sz/z-Stämme im definiten Präsens: Assimilation mit -j-, Vokalharmonie und Schreibweise.",
+      "b2-u5": "-ik‑Verben richtig einordnen: häufig intransitiv; wie du ungrammatische Sätze vermeidest.",
+      "b2-u6": "Unregelmäßige Kerngruppe eszik/iszik/tesz/vesz/visz im definiten Präsens – sicher anwenden.",
+      "b2-u7": "Vokalverlust-Verben (javasol/érz/közöl/őrzi): Bildung und typische Muster.",
+      "b2-u8": "Mehrere Subjekte, Singular-Verb und -lak/-lek – Fokus auf natürliche Ausdrucksweise.",
+      "b2-u9": "Létige 1: Formen und gebräuchliche Antworten auf Wo/Wie/Wieviele/Welche.",
+      "b2-u10":"Létige 2: Negation mit nem und nincs – Worauf du achten musst.",
+      "b2-u11":"Verbpräfixe 1 (Bewegung): be-/ki-/fel-/le-/át- … Trennbarkeit im Fokus.",
+      "b2-u12":"Verbpräfixe 2 (Aspekt): meg-/el- für Abschluss und Fortbewegung.",
+      "b2-u13":"Review: Definit vs. Indefinit mit Präfixen – kombiniert anwenden."
+    };
+    return map[lesson.id] || "";
+  }
+
+  function ensureFiveExamples(lesson){
+    const ex = (lesson.examples || []).slice();
+    const padNeeded = 5 - ex.length;
+    function add(hu,de){ ex.push({hu,de}); }
+    if (padNeeded > 0){
+      // Simple auto-generated fillers depending on title keywords
+      if (/Vokalharmonie/i.test(lesson.title)){
+        add("A kertben olvasok.","Ich lese im Garten.");
+        add("Az irodából hív.","Er/Sie ruft aus dem Büro an.");
+      } else if (/definit/i.test(lesson.title)){
+        add("Olvasom a cikket.","Ich lese den Artikel.");
+        add("Várom a buszt.","Ich warte auf den Bus.");
+      } else if (/Létige/i.test(lesson.title)){
+        add("Itt vagyok.","Ich bin hier.");
+        add("A boltban vannak.","Sie sind im Laden.");
+      } else if (/Verbpräfix/i.test(lesson.title)){
+        add("Felveszem a kabátot.","Ich ziehe den Mantel an.");
+        add("Kihozod a széket?","Bringst du den Stuhl heraus?");
+      } else {
+        add("Most tanulok magyarul.","Ich lerne gerade Ungarisch.");
+        add("A feladatot megírom.","Ich schreibe die Aufgabe fertig.");
+      }
+    }
+    return ex.slice(0,5);
+  }
+
+  function buildLessonTasks(lesson){
+    const tasks = [];
+    // From gap exercises -> each item becomes a tiny 'gap' task
+    (lesson.exercises||[]).forEach(ex => {
+      if (ex.type === "gap"){
+        (ex.items||[]).forEach(it => tasks.push({ kind:"gap", prompt: ex.prompt, items:[it] }));
+      } else if (ex.type === "mc"){
+        tasks.push({ kind:"mc", prompt: ex.prompt, options: ex.options, answer: ex.answer });
+      } else if (ex.type === "match"){
+        // group pairs in threes if many
+        const pairs = ex.pairs || [];
+        for (let i=0; i<pairs.length; i+=3){
+          tasks.push({ kind:"match", prompt: ex.prompt, pairs: pairs.slice(i, i+3) });
+        }
+      }
+    });
+    // Pad up to 15 by repeating with small variations if needed
+    while (tasks.length < 15 && tasks.length > 0){
+      tasks.push(tasks[tasks.length % Math.max(1, tasks.length)])
+    }
+    if (tasks.length === 0){
+      // Fallback simple mc tasks
+      tasks.push({ kind:"mc", prompt:"Wähle die korrekte Form:", options:["Vagyok magyar.","Magyar vagyok."], answer:1 });
+    }
+    // Trim to 15
+    return tasks.slice(0,15);
+  }
+
 
   // ---------- Trainer / Reviews ----------
   function Trainer(){
@@ -1167,6 +1385,7 @@
   function Reviews(){ return Trainer(); }
 
   // ---------- Settings ----------
+  
   function Settings(){
     const lvls = ["A1","A2","B1","B2","C1","C2"];
     const card = el("div", { class:"card", style:"margin-top:16px" }, [
@@ -1186,6 +1405,14 @@
           ])
         ]),
         el("div", {}, [
+          el("label", {}, ["Hörmodus (TTS-Geschwindigkeit)"]),
+          el("div", { class:"row" }, [
+            el("button", { class:"btn" + (state.profile.audioMode === "slow" ? " ok" : ""), onclick:()=>{ state.profile.audioMode="slow"; saveState(); render(); } }, ["Langsam"]),
+            el("button", { class:"btn" + (state.profile.audioMode !== "slow" ? " ok" : ""), onclick:()=>{ state.profile.audioMode="normal"; saveState(); render(); } }, ["Normal"]),
+            el("span", { class:"small" }, ["wirken überall, wo 🔊 verfügbar ist"])
+          ])
+        ]),
+        el("div", {}, [
           el("label", {}, ["Offline-Speicherung (localStorage)"]),
           el("div", { class:"row" }, [
             el("input", { type:"checkbox", checked: state.profile.allowOffline ? "checked" : null, onchange:(e)=>{ state.profile.allowOffline = e.target.checked; saveState(); } }),
@@ -1200,6 +1427,7 @@
     ]);
     return card;
   }
+
 
   // ---------- Exam ----------
   function ExamHome(){
@@ -1303,6 +1531,7 @@
     // B2: [ { id:"b2-v1", title:"Thema 1", entries:[ {de, hu, deEx, huEx}, ... ] }, ... ]
   };
 
+  
   function ViewVocabHub(){
     const lvl = state.profile.level;
     if (!lvl) return el("div", { class:"card", style:"margin-top:16px" }, [
@@ -1316,21 +1545,38 @@
       el("div",{class:"ft"},[ el("button",{class:"btn",onclick:()=>openGateModal()},["Hinweis anzeigen"]) ])
     ]);
 
-    const sets = (VOCAB_SETS["B2"] || []);
+    const sets = buildVocabSets("B2");
     if (!sets.length) {
       return el("div", { class:"card", style:"margin-top:16px" }, [
         el("div",{class:"hd"},["Meine Vokabeln – B2"]),
-        el("div",{class:"bd"},["Bald verfügbar: 10 Lektionen × 30 Vokabeln."]),
-        el("div",{class:"ft"},[
-          el("button",{class:"btn",onclick:()=>{ state.ui.route="home"; saveState(); render(); }},["Zur Startseite"])
-        ])
+        el("div",{class:"bd"},["Noch keine Vokabeln vorhanden – prüfe die Lektionen."]),
+        el("div",{class:"ft"},[ el("button",{class:"btn",onclick:()=>{ state.ui.route="home"; saveState(); render(); }},["Zur Startseite"]) ])
       ]);
     }
-
     return el("div", { class:"grid grid-2", style:"margin-top:16px" },
       sets.map(s => VocabSetCard(s))
     );
   }
+
+  function buildVocabSets(level){
+    const lessons = (CURRICULUM[level] || []);
+    const all = [];
+    lessons.forEach(l => (l.vocab||[]).forEach(v => all.push({lesson:l.id, title:l.title, ...v})));
+    // Einen großen Sammel-Set + je Lektion ein Set
+    const byLesson = {};
+    lessons.forEach(l => { byLesson[l.id] = []; });
+    all.forEach(e => byLesson[e.lesson].push(e));
+    const sets = [
+      { id: level.toLowerCase()+"-all", title: "Alle Lektionen ("+level+")", entries: all.map(e => ({ de: e.de, hu: e.hu, deEx: e.title, huEx: e.lesson })) }
+    ];
+    for (const l of lessons){
+      if ((l.vocab||[]).length){
+        sets.push({ id: l.id+"-vocab", title: "Vokabeln – "+l.title, entries: byLesson[l.id].map(e => ({ de:e.de, hu:e.hu, deEx:e.title, huEx:e.lesson })) });
+      }
+    }
+    return sets;
+  }
+
 
   function VocabSetCard(set){
     return el("div", { class:"card" }, [
