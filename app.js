@@ -787,6 +787,97 @@ function ViewProfile(){
   ]);
 }
 
+  function ViewHome(){
+    const lvl = state.profile.level || "B2";
+    const lessons = (CURRICULUM[lvl] || []);
+    const lessonIds = new Set(lessons.map(l => l.id));
+    const completedCount = Object.keys(state.progress.completedLessons || {}).filter(id => lessonIds.has(id)).length;
+    const total = lessons.length;
+    const pct = total ? Math.round((completedCount / total) * 100) : 0;
+
+    const levelBtns = ["A1","A2","B1","B2","C1","C2"].map(L =>
+      el("button", {
+        class: "level-btn" + (lvl===L ? " active" : ""),
+        onclick: ()=>{ state.profile.level = L; saveState(); render(); }
+      }, [L])
+    );
+
+    return el("div", { class:"body grid grid-1", style:"margin-top:16px" }, [
+      el("div", { class:"hero" }, [
+        el("div", { class:"row", style:"justify-content:space-between; align-items:flex-start; flex-wrap:wrap" }, [
+          el("div", {}, [
+            el("div", { style:"font-size:24px; font-weight:800; margin-bottom:6px" }, ["Willkommen bei MagyarLab"]),
+            el("div", { class:"small" }, ["Lerne Ungarisch strukturiert – Niveau zuerst wählen, dann loslegen."])
+          ]),
+          el("div", { class:"home-progress" }, [
+            el("div", { class:"progress", style:"width:160px" }, [ el("i", { style:`width:${pct}%` }) ]),
+            el("span", { class:"small" }, [`${pct}% in ${lvl}`])
+          ])
+        ]),
+        el("div", { class:"hr" }),
+        el("div", {}, [
+          el("label", {}, ["Niveau wählen"]),
+          el("div", { class:"level-grid", style:"margin-top:8px" }, levelBtns),
+          el("div", { class:"small" }, ["Niveau kann jederzeit gewechselt werden."])
+        ])
+      ]),
+
+      el("div", { class:"link-cards" }, [
+        el("div", { class:"card link-card", onclick:()=>{ state.ui.tab="lessons"; state.ui.route="app"; saveState(); render(); } }, [
+          el("div", { class:"hd" }, [ el("div",{class:"icon"},["📚"]), "Lektionen" ]),
+          el("div", { class:"bd small" }, [`Zum Lektions-Grid für ${lvl}.`]),
+        ]),
+        el("div", { class:"card link-card", onclick:()=>{ state.ui.tab="trainer"; state.ui.route="app"; saveState(); render(); } }, [
+          el("div", { class:"hd" }, [ el("div",{class:"icon"},["🧠"]), "Vokabeltrainer" ]),
+          el("div", { class:"bd small" }, ["Wiederhole Vokabeln mit SRS."]),
+        ]),
+        state.profile.examPrep ? el("div", { class:"card link-card", onclick:()=>{ state.ui.tab="exam"; state.ui.route="app"; saveState(); render(); } }, [
+          el("div", { class:"hd" }, [ el("div",{class:"icon"},["🎯"]), "Prüfungsmodus" ]),
+          el("div", { class:"bd small" }, ["Sets im ECL/TELC-Stil."]),
+        ]) : el("div")
+      ]),
+
+      el("div", { class:"footer" }, [
+        "© MagyarLab – Startseite • Keine externen Links. Impressum/Datenschutz folgen."
+      ])
+    ]);
+  }
+
+  function ViewProfile(){
+    const lvl = state.profile.level || "B2";
+    const lessons = (CURRICULUM[lvl] || []);
+    const lessonIds = new Set(lessons.map(l => l.id));
+    const completed = Object.keys(state.progress.completedLessons || {}).filter(id => lessonIds.has(id)).length;
+
+    return el("div", { class:"body grid grid-1", style:"margin-top:16px" }, [
+      el("div", { class:"card" }, [
+        el("div", { class:"hd" }, ["Profil"]),
+        el("div", { class:"bd grid grid-2" }, [
+          el("div", {}, [
+            el("div", { class:"small" }, ["Aktuelles Niveau"]),
+            el("div", { class:"chips", style:"margin-top:6px" }, ["A1","A2","B1","B2","C1","C2"].map(L =>
+              el("button", {
+                class:"level-btn" + (lvl===L ? " active" : ""),
+                onclick: ()=>{ state.profile.level=L; saveState(); render(); }
+              }, [L])
+            )),
+          ]),
+          el("div", {}, [
+            el("div", { class:"small" }, ["Fortschritt in ", lvl]),
+            el("div", { class:"progress", style:"margin-top:6px" }, [
+              el("i", { style: `width:${(lessons.length? Math.round((completed/lessons.length)*100) : 0)}%` })
+            ]),
+            el("div", { class:"small" }, [`${completed}/${lessons.length} Lektionen erledigt`]),
+          ]),
+        ]),
+        el("div", { class:"ft" }, [
+          el("button", { class:"btn", onclick: ()=>{ state.ui.route="home"; saveState(); render(); } }, ["Zur Startseite"]),
+          el("button", { class:"btn", onclick: ()=>{ state.ui.tab="settings"; state.ui.route="app"; saveState(); render(); } }, ["Zu den Einstellungen"])
+        ])
+      ])
+    ]);
+  }
+
   // ---------- Onboarding (nur Niveau) ----------
   function ViewOnboarding(){
     const lvls = ["A1","A2","B1","B2","C1","C2"];
