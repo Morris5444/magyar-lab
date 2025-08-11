@@ -27,9 +27,6 @@ body{
 .nav{ display:flex; align-items:center; justify-content:space-between; }
 .title{ display:flex; align-items:center; gap:10px; }
 .title .logo{ width:28px; height:28px; background:var(--brand); border-radius:8px; display:grid; place-items:center; color:#fff; font-weight:700; }
-.tabs{ display:flex; gap:6px; flex-wrap:wrap; }
-.tab{ padding:8px 12px; border:1px solid var(--border); background:#fff; border-radius:10px; cursor:pointer; }
-.tab.active{ background:var(--brand); color:#fff; border-color:transparent; }
 
 .grid{ display:grid; gap:16px; }
 .grid-1{ grid-template-columns: 1fr; }
@@ -158,3 +155,12 @@ label{ font-size:14px; color:var(--muted); }
 .chat-panel .hd{ padding:10px 12px; border-bottom:1px solid var(--border); font-weight:700; }
 .chat-panel .bd{ padding:10px 12px; height: calc(100% - 100px); overflow:auto; }
 .chat-panel .ft{ padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; }
+
+/* Dropdown-Menü oben rechts */
+.menu-wrap{ position: relative; }
+.menu-wrap .dropdown{
+  position: absolute; right: 0; top: calc(100% + 8px);
+  background: #fff; border:1px solid var(--border); border-radius:12px;
+  box-shadow: var(--shadow); padding:8px; display:flex; flex-direction:column; gap:6px; z-index:60;
+}
+.menu-wrap .dropdown .item{ text-align:left; }

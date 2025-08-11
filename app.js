@@ -618,12 +618,14 @@
     clear(root);
     if (!state.ui.hideTopbar) root.appendChild(Navbar());
 
-    if (state.ui.route === "home")       { root.appendChild(ViewHome()); root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "profile")    { root.appendChild(ViewProfile()); root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "vocab")      { root.appendChild(ViewVocabHub()); root.appendChild(ChatFab()); return; }
+    // Top-Level Routen
+    if (state.ui.route === "home")       { root.appendChild(ViewHome());       root.appendChild(ChatFab()); return; }
+    if (state.ui.route === "profile")    { root.appendChild(ViewProfile());    root.appendChild(ChatFab()); return; }
+    if (state.ui.route === "vocab")      { root.appendChild(ViewVocabHub());   root.appendChild(ChatFab()); return; }
     if (state.ui.route === "onboarding") { root.appendChild(ViewOnboarding()); root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "exam")       { root.appendChild(ViewExamInfo()); root.appendChild(ChatFab()); return; }
+    if (state.ui.route === "exam")       { root.appendChild(ViewExamInfo());   root.appendChild(ChatFab()); return; }
 
+    // “App”-Ansicht mit Tabs intern (Lessons/Trainer/Reviews/Settings/Exam)
     root.appendChild(ViewDashboard());
     root.appendChild(ChatFab());
   }
@@ -631,19 +633,53 @@
   // ---------- Navbar ----------
   function Navbar(){
     const wrap = el("div", { class:"nav topbar" + (state.ui.hideTopbar ? " hidden" : "") }, [
+      // Linke Seite: Logo/Title
       el("div", { class: "title", onclick: ()=>{ state.ui.route="home"; state.ui.lessonId=null; saveState(); render(); } }, [
         el("div", { class: "logo" }, ["M"]),
         el("div", {}, [ el("span", { class:"mono" }, ["MagyarLab"]), " ", el("span",{class:"badge"},["A1–C2"]) ]),
       ]),
+
+      // Rechte Seite: Menü-Button + Dropdown
       el("div", { class:"menu-wrap" }, [
-        el("button", { class:"menu-btn", onclick:()=>{
+        el("button", { class:"menu-btn btn", onclick:()=>{
           state.ui.menuOpen = !state.ui.menuOpen; saveState(); render();
         }}, ["Menü"]),
+
         state.ui.menuOpen ? el("div", { class:"dropdown" }, [
-          el("button", { class:"item", onclick:()=>{ state.ui.route="profile"; state.ui.menuOpen=false; saveState(); render(); } }, ["Profil"]),
-          el("button", { class:"item", onclick:()=>{ state.ui.route="app"; state.ui.tab="settings"; state.ui.menuOpen=false; saveState(); render(); } }, ["Einstellungen"]),
-          el("button", { class:"item", onclick:()=>{ state.ui.route="app"; state.ui.tab="lessons"; state.ui.menuOpen=false; saveState(); render(); } }, ["Lektionen"]),
-          el("button", { class:"item", onclick:()=>{ state.ui.route="vocab"; state.ui.menuOpen=false; saveState(); render(); } }, ["Meine Vokabeln"]),
+          // Start
+          el("button", { class:"item btn block", onclick:()=>{ 
+            state.ui.route="home"; state.ui.menuOpen=false; saveState(); render(); 
+          } }, ["Start"]),
+
+          // Lektionen
+          el("button", { class:"item btn block", onclick:()=>{ 
+            state.ui.route="app"; state.ui.tab="lessons"; state.ui.menuOpen=false; saveState(); render(); 
+          } }, ["Lektionen"]),
+
+          // Vokabeltrainer
+          el("button", { class:"item btn block", onclick:()=>{ 
+            state.ui.route="app"; state.ui.tab="trainer"; state.ui.menuOpen=false; saveState(); render(); 
+          } }, ["Vokabeltrainer"]),
+
+          // Wiederholen
+          el("button", { class:"item btn block", onclick:()=>{ 
+            state.ui.route="app"; state.ui.tab="reviews"; state.ui.menuOpen=false; saveState(); render(); 
+          } }, ["Wiederholen"]),
+
+          // Prüfung (nur wenn aktiviert)
+          (state.profile.examPrep ? el("button", { class:"item btn block", onclick:()=>{ 
+            state.ui.route="app"; state.ui.tab="exam"; state.ui.menuOpen=false; saveState(); render(); 
+          } }, ["Prüfung"]) : null),
+
+          // Einstellungen
+          el("button", { class:"item btn block", onclick:()=>{ 
+            state.ui.route="app"; state.ui.tab="settings"; state.ui.menuOpen=false; saveState(); render(); 
+          } }, ["Einstellungen"]),
+
+          // Profil
+          el("button", { class:"item btn block", onclick:()=>{ 
+            state.ui.route="profile"; state.ui.menuOpen=false; saveState(); render(); 
+          } }, ["Profil"]),
         ]) : null
       ])
     ]);
