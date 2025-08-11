@@ -140,3 +140,21 @@ label{ font-size:14px; color:var(--muted); }
 /* Profil-Button oben rechts dezenter */
 .profile-btn{ padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:#fff; }
 .profile-btn:hover{ background:#f8fafc; }
+
+/* duplicate layout/menu styles removed */
+
+/* Modal / Overlay (Hinweise + In-Lesson Menü) */
+.modal-backdrop{ position:fixed; inset:0; background:rgba(15,23,42,0.45); display:grid; place-items:center; z-index:50; }
+.modal-card{ background:#fff; border:1px solid var(--border); border-radius:14px; box-shadow: var(--shadow); width:min(560px, 92vw); }
+.modal-card .hd{ padding:14px 16px; border-bottom:1px solid var(--border); font-weight:700; }
+.modal-card .bd{ padding:16px; }
+.modal-card .ft{ padding:14px 16px; border-top:1px solid var(--border); display:flex; gap:10px; justify-content:flex-end; }
+
+/* Chat-FAB unten rechts (global) */
+.fab{ position:fixed; right:16px; bottom:16px; z-index:40; }
+.fab .btn{ border-radius:999px; padding:12px 14px; box-shadow: var(--shadow); }
+.chat-panel{ position:fixed; right:16px; bottom:76px; width:360px; max-width:calc(100vw - 32px); height:560px; background:#fff; border:1px solid var(--border); border-radius:16px; box-shadow: var(--shadow); z-index:45; display:none; }
+.chat-panel.open{ display:block; }
+.chat-panel .hd{ padding:10px 12px; border-bottom:1px solid var(--border); font-weight:700; }
+.chat-panel .bd{ padding:10px 12px; height: calc(100% - 100px); overflow:auto; }
+.chat-panel .ft{ padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; }
