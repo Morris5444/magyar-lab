@@ -656,7 +656,7 @@
         el("div", {}, [ el("span", { class:"mono" }, ["MagyarLab"]), " ", el("span",{class:"badge"},["A1–C2"]) ]),
       ]),
 
-      // Rechte Seite: Menü-Button
+      // Rechte Seite: Menü-Button (öffnet Drawer)
       el("div", { class:"menu-wrap" }, [
         el("button", { class:"menu-btn btn", onclick:()=>{
           state.ui.menuOpen = true; saveState(); render();
