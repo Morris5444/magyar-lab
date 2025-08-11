@@ -11,6 +11,7 @@
     } catch (e) { return null; }
   }
   function saveState() {
+    if (!state?.profile?.allowOffline) return;
     try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
   }
 
@@ -30,7 +31,7 @@
       scores: {},
     },
     srs: {},                // vocabId -> { reps, interval, ease, due }
-    ui: { tab: "lessons", route: "onboarding", lessonId: null },
+    ui: { tab: "lessons", route: "home", lessonId: null },
     todayPlan: [],
   };
 
@@ -558,14 +559,18 @@
   }
   function speak(text, opts={}) {
     if (!("speechSynthesis" in window)) return;
-    const u = new SpeechSynthesisUtterance(text);
-    const hu = VOICES.find(v => /hu/i.test(v.lang));
-    if (hu) u.voice = hu, u.lang = hu.lang;
-    else u.lang = "hu-HU";
-    u.rate = opts.rate || 1;
-    u.pitch = opts.pitch || 1;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      const hu = VOICES.find(v => /hu/i.test(v.lang));
+      u.voice = hu || null;
+      u.lang = hu?.lang || "hu-HU";
+      u.rate = opts.rate || 1;
+      u.pitch = opts.pitch || 1;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } catch (e) {
+      // no-op
+    }
   }
 
   // ---------- Utils ----------
@@ -612,38 +617,54 @@
   function render() {
     clear(root);
     root.appendChild(Navbar());
-    if (state.ui.route === "onboarding") root.appendChild(ViewOnboarding());
-    else root.appendChild(ViewDashboard());
+    if (state.ui.route === "home")        { root.appendChild(ViewHome()); return; }
+    if (state.ui.route === "onboarding")  { root.appendChild(ViewOnboarding()); return; }
+    if (state.ui.route === "profile")     { root.appendChild(ViewProfile()); return; }
+    root.appendChild(ViewDashboard());
   }
 
   // ---------- Navbar ----------
   function Navbar(){
     const tabs = [
+      { id: "start",   label: "Start" },
       { id: "lessons", label: "Lektionen" },
       { id: "trainer", label: "Vokabeltrainer" },
       { id: "reviews", label: "Wiederholen" },
       ...(state.profile.examPrep ? [{ id: "exam", label: "Prüfung" }] : []),
       { id: "settings", label: "Einstellungen" },
     ];
-    const row = el("div", { class: "nav" }, [
-      el("div", { class: "title" }, [
+
+    return el("div", { class: "nav" }, [
+      el("div", { class: "title", onclick: ()=>{ state.ui.route="home"; state.ui.lessonId=null; saveState(); render(); } }, [
         el("div", { class: "logo" }, ["M"]),
-        el("div", { }, [el("span", { class:"mono" }, ["MagyarLab"]), " ", el("span",{class:"badge"},["A1–C2"])]),
+        el("div", {}, [ el("span", { class:"mono" }, ["MagyarLab"]), " ", el("span",{class:"badge"},["A1–C2"]) ]),
       ]),
       el("div", { class:"tabs" }, tabs.map(t =>
         el("button", {
-          class: "tab" + (state.ui.tab === t.id ? " active" : ""),
-          onclick: () => { state.ui.tab = t.id; state.ui.route = "app"; saveState(); rerenderBody(); }
+          class: "tab" + (
+            (t.id==="start" && state.ui.route==="home") ? " active" :
+            (state.ui.tab===t.id && state.ui.route!=="home") ? " active" : ""
+          ),
+          onclick: () => {
+            if (t.id === "start") { state.ui.route = "home"; saveState(); render(); }
+            else { state.ui.tab = t.id; state.ui.route = "app"; saveState(); rerenderBody(); }
+          }
         }, [t.label])
       )),
+      el("div", {}, [
+        el("button", {
+          class:"profile-btn",
+          onclick: ()=>{ state.ui.route="profile"; saveState(); render(); }
+        }, ["Profil"])
+      ])
     ]);
-    return row;
   }
 
   function rerenderBody(){
     const body = document.querySelector("#app .body");
     if (!body) { render(); return; }
     const parent = body.parentElement;
+    if (!parent) { render(); return; }
     parent.removeChild(body);
     parent.appendChild(ViewRouter());
   }
@@ -659,12 +680,104 @@
   }
 
   function ViewRouter(){
+    // Home/Profile werden im Top-Router gehandhabt
     if (state.ui.tab === "lessons") return LessonList();
     if (state.ui.tab === "trainer") return Trainer();
     if (state.ui.tab === "reviews") return Reviews();
     if (state.ui.tab === "settings") return Settings();
     if (state.profile.examPrep && state.ui.tab === "exam") return ExamHome();
     return el("div");
+  }
+
+  function ViewHome(){
+    const lvl = state.profile.level || "B2";
+    const lessons = (CURRICULUM[lvl] || []);
+    const lessonIds = new Set(lessons.map(l => l.id));
+    const completedCount = Object.keys(state.progress.completedLessons || {}).filter(id => lessonIds.has(id)).length;
+    const total = lessons.length;
+    const pct = total ? Math.round((completedCount / total) * 100) : 0;
+
+    const levelBtns = ["A1","A2","B1","B2","C1","C2"].map(L =>
+      el("button", {
+        class: "level-btn" + (lvl===L ? " active" : ""),
+        onclick: ()=>{ state.profile.level = L; saveState(); render(); }
+      }, [L])
+    );
+
+    return el("div", { class:"body grid grid-1", style:"margin-top:16px" }, [
+      el("div", { class:"hero" }, [
+        el("div", { class:"row", style:"justify-content:space-between; align-items:flex-start; flex-wrap:wrap" }, [
+          el("div", {}, [
+            el("div", { style:"font-size:24px; font-weight:800; margin-bottom:6px" }, ["Willkommen bei MagyarLab"]),
+            el("div", { class:"small" }, ["Lerne Ungarisch strukturiert – Niveau zuerst wählen, dann loslegen."])
+          ]),
+          el("div", { class:"home-progress" }, [
+            el("div", { class:"progress", style:"width:160px" }, [ el("i", { style:`width:${pct}%` }) ]),
+            el("span", { class:"small" }, [`${pct}% in ${lvl}`])
+          ])
+        ]),
+        el("div", { class:"hr" }),
+        el("div", {}, [
+          el("label", {}, ["Niveau wählen"]),
+          el("div", { class:"level-grid", style:"margin-top:8px" }, levelBtns),
+          el("div", { class:"small" }, ["Niveau kann jederzeit gewechselt werden."])
+        ])
+      ]),
+
+      el("div", { class:"link-cards" }, [
+        el("div", { class:"card link-card", onclick:()=>{ state.ui.tab="lessons"; state.ui.route="app"; saveState(); render(); } }, [
+          el("div", { class:"hd" }, [ el("div",{class:"icon"},["📚"]), "Lektionen" ]),
+          el("div", { class:"bd small" }, [`Zum Lektions-Grid für ${lvl}.`]),
+        ]),
+        el("div", { class:"card link-card", onclick:()=>{ state.ui.tab="trainer"; state.ui.route="app"; saveState(); render(); } }, [
+          el("div", { class:"hd" }, [ el("div",{class:"icon"},["🧠"]), "Vokabeltrainer" ]),
+          el("div", { class:"bd small" }, ["Wiederhole Vokabeln mit SRS."]),
+        ]),
+        state.profile.examPrep ? el("div", { class:"card link-card", onclick:()=>{ state.ui.tab="exam"; state.ui.route="app"; saveState(); render(); } }, [
+          el("div", { class:"hd" }, [ el("div",{class:"icon"},["🎯"]), "Prüfungsmodus" ]),
+          el("div", { class:"bd small" }, ["Sets im ECL/TELC-Stil."]),
+        ]) : el("div")
+      ]),
+
+      el("div", { class:"footer" }, [
+        "© MagyarLab – Startseite • Keine externen Links. Impressum/Datenschutz folgen."
+      ])
+    ]);
+  }
+
+  function ViewProfile(){
+    const lvl = state.profile.level || "B2";
+    const lessons = (CURRICULUM[lvl] || []);
+    const lessonIds = new Set(lessons.map(l => l.id));
+    const completed = Object.keys(state.progress.completedLessons || {}).filter(id => lessonIds.has(id)).length;
+
+    return el("div", { class:"body grid grid-1", style:"margin-top:16px" }, [
+      el("div", { class:"card" }, [
+        el("div", { class:"hd" }, ["Profil"]),
+        el("div", { class:"bd grid grid-2" }, [
+          el("div", {}, [
+            el("div", { class:"small" }, ["Aktuelles Niveau"]),
+            el("div", { class:"chips", style:"margin-top:6px" }, ["A1","A2","B1","B2","C1","C2"].map(L =>
+              el("button", {
+                class:"level-btn" + (lvl===L ? " active" : ""),
+                onclick: ()=>{ state.profile.level=L; saveState(); render(); }
+              }, [L])
+            )),
+          ]),
+          el("div", {}, [
+            el("div", { class:"small" }, ["Fortschritt in ", lvl]),
+            el("div", { class:"progress", style:"margin-top:6px" }, [
+              el("i", { style: `width:${(lessons.length? Math.round((completed/lessons.length)*100) : 0)}%` })
+            ]),
+            el("div", { class:"small" }, [`${completed}/${lessons.length} Lektionen erledigt`]),
+          ]),
+        ]),
+        el("div", { class:"ft" }, [
+          el("button", { class:"btn", onclick: ()=>{ state.ui.route="home"; saveState(); render(); } }, ["Zur Startseite"]),
+          el("button", { class:"btn", onclick: ()=>{ state.ui.tab="settings"; state.ui.route="app"; saveState(); render(); } }, ["Zu den Einstellungen"])
+        ])
+      ])
+    ]);
   }
 
   // ---------- Onboarding (nur Niveau) ----------
@@ -713,23 +826,20 @@
 
     // Fix: Fortschritt nur über das aktuelle Niveau
     const lessonIds = new Set(lessons.map(l => l.id));
-    const completedCount = Object.keys(state.progress.completedLessons)
+    const completedCount = Object.keys(state.progress.completedLessons || {})
       .filter(id => lessonIds.has(id)).length;
     const total = lessons.length;
     const pct = total ? Math.round((completedCount/total)*100) : 0;
 
-    const dueCount = Object.values(state.srs).filter(v => !v.due || v.due <= Date.now()).length;
+    const dueCount = Object.values(state.srs).filter(v => !v || !v.due || v.due <= Date.now()).length;
     const bar = el("div", { class:"progress" }, [ el("i", { style:`width:${pct}%` }) ]);
 
     return el("div", { class:"card" }, [
       el("div", { class:"hd" }, ["Dein Lernplan ", el("span",{class:"badge"},[fmtDate()]) ]),
-      el("div", { class:"bd grid grid-2" }, [
-        el("div", {}, [
-          el("div", {}, [bar, el("div", { class:"small", style:"margin-top:8px" }, [pct+"%"]) ]),
-          el("div", { class:"hr" }),
-          PlanList(),
-        ]),
-        el("div", {}, [ CardTipsInner(dueCount) ]),
+      el("div", { class:"bd" }, [
+        el("div", {}, [bar, el("div", { class:"small", style:"margin-top:8px" }, [pct+"%"]) ]),
+        el("div", { class:"hr" }),
+        PlanList(),
       ]),
       el("div", { class:"ft" }, [
         el("div", { class:"row" }, [
@@ -742,6 +852,12 @@
     ]);
   }
   function BtnOutline(label, onclick){ return el("button", { class:"btn", onclick }, [label]); }
+
+  function CardTips(){
+    const dueCount = Object.values(state.srs)
+      .filter(v => !v || !v.due || v.due <= Date.now()).length;
+    return CardTipsInner(dueCount);
+  }
 
   function CardTipsInner(dueCount){
     const exam = state.profile.examPrep;
@@ -1020,15 +1136,17 @@
   function openSet(id){
     const set = EXAM_SETS.find(x => x.id === id);
     if (!set) return;
-    const overlay = el("div", { class:"card", style:"margin-top:16px" }, [
+    const body = document.querySelector("#app .body") || document.getElementById("app");
+    const old = body.querySelector(".exam-overlay");
+    if (old) old.remove();
+    const overlay = el("div", { class:"card exam-overlay", style:"margin-top:16px" }, [
       el("div", { class:"hd" }, [set.title]),
       el("div", { class:"bd" }, set.parts.map((p,idx) => ExamPart(p, idx+1, set.parts.length))),
       el("div", { class:"ft" }, [
         el("button", { class:"btn", onclick:()=>{ state.ui.tab="exam"; rerenderBody(); } }, ["Schließen"]),
       ]),
     ]);
-    const body = document.querySelector("#app .body");
-    (body || document.getElementById("app")).appendChild(overlay); // robust
+    body.appendChild(overlay);
   }
   function ExamPart(part, i, total){
     if (part.type === "reading"){
@@ -1086,6 +1204,5 @@
     ]);
   }
 
-  // Initial render
-  render();
+  // Initial render done above
 })();
