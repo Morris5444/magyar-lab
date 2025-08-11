@@ -140,6 +140,7 @@ label{ font-size:14px; color:var(--muted); }
 /* Profil-Button oben rechts dezenter */
 .profile-btn{ padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:#fff; }
 .profile-btn:hover{ background:#f8fafc; }
+
 /* duplicate layout/menu styles removed */
 
 /* Modal / Overlay (Hinweise + In-Lesson Menü) */
