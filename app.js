@@ -549,6 +549,7 @@
     return { reps: reps + 1, interval: newInterval, ease: newEase, due: now + newInterval };
   }
 
+  
   // ---------- TTS ----------
   let VOICES = [];
   function loadVoices() {
@@ -559,30 +560,28 @@
   if ("speechSynthesis" in window) {
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }
-  function speak(text, opts={}) {
+  function speak(text, opts = {}) {
     if (!("speechSynthesis" in window)) return;
     try {
       const u = new SpeechSynthesisUtterance(text);
       const hu = VOICES.find(v => /hu/i.test(v.lang));
       u.voice = hu || null;
       u.lang = hu?.lang || "hu-HU";
-      u.rate = (opts.rate != null ? opts.rate : (typeof getAudioRate==="function" ? getAudioRate() : 1));
-u.pitch = opts.pitch || 1;
+      u.rate = (opts.rate != null ? opts.rate : (typeof getAudioRate === "function" ? getAudioRate() : 1));
+      u.pitch = opts.pitch || 1;
       speechSynthesis.cancel();
       speechSynthesis.speak(u);
+    } catch (e) {
+      // no-op
     }
+  }
   function getAudioRate(){
     try{
       const mode = (state && state.profile && state.profile.audioMode) || "normal";
       return mode === "slow" ? 0.85 : 1.0;
     }catch(e){ return 1.0; }
   }
- catch (e) {
-      // no-op
-    }
-  }
-
-  // ---------- Utils ----------
+// ---------- Utils ----------
   function el(tag, attrs={}, children=[]) {
     const node = document.createElement(tag);
     for (const [k,v] of Object.entries(attrs)) {
@@ -620,10 +619,8 @@ u.pitch = opts.pitch || 1;
   rebuildPlan();
 
   // ---------- App Root ----------
-  const root = document.getElementById("app");
-  render();
-
-  function render() {
+  window.addEventListener("DOMContentLoaded", function(){ render(); });
+function render() {
     clear(root);
     if (!state.ui.hideTopbar) root.appendChild(Navbar());
 
