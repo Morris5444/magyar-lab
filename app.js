@@ -618,33 +618,49 @@
     clear(root);
     if (!state.ui.hideTopbar) root.appendChild(Navbar());
 
-    if (state.ui.route === "home")       { root.appendChild(ViewHome()); root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "profile")    { root.appendChild(ViewProfile()); root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "vocab")      { root.appendChild(ViewVocabHub()); root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "onboarding") { root.appendChild(ViewOnboarding()); root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "exam")       { root.appendChild(ViewExamInfo()); root.appendChild(ChatFab()); return; }
+    // Top-Level Routen
+    let view;
+    if (state.ui.route === "home")       view = ViewHome();
+    else if (state.ui.route === "profile")    view = ViewProfile();
+    else if (state.ui.route === "vocab")      view = ViewVocabHub();
+    else if (state.ui.route === "onboarding") view = ViewOnboarding();
+    else if (state.ui.route === "exam")       view = ViewExamInfo();
+    // “App”-Ansicht mit Tabs intern (Lessons/Trainer/Reviews/Settings/Exam)
+    else view = ViewDashboard();
 
-    root.appendChild(ViewDashboard());
+    root.appendChild(view);
     root.appendChild(ChatFab());
+
+    // Drawer mount/unmount
+    (function manageDrawer(){
+      const existing = document.querySelector(".drawer-backdrop");
+      if (state.ui.menuOpen) {
+        if (!existing) {
+          const d = DrawerMenu();
+          document.body.appendChild(d);
+          // Fokus für ESC
+          setTimeout(()=>{ d.focus(); }, 0);
+        }
+      } else {
+        if (existing) existing.remove();
+      }
+    })();
   }
 
   // ---------- Navbar ----------
   function Navbar(){
     const wrap = el("div", { class:"nav topbar" + (state.ui.hideTopbar ? " hidden" : "") }, [
+      // Linke Seite: Logo/Title
       el("div", { class: "title", onclick: ()=>{ state.ui.route="home"; state.ui.lessonId=null; saveState(); render(); } }, [
         el("div", { class: "logo" }, ["M"]),
         el("div", {}, [ el("span", { class:"mono" }, ["MagyarLab"]), " ", el("span",{class:"badge"},["A1–C2"]) ]),
       ]),
+
+      // Rechte Seite: Menü-Button
       el("div", { class:"menu-wrap" }, [
-        el("button", { class:"menu-btn", onclick:()=>{
-          state.ui.menuOpen = !state.ui.menuOpen; saveState(); render();
-        }}, ["Menü"]),
-        state.ui.menuOpen ? el("div", { class:"dropdown" }, [
-          el("button", { class:"item", onclick:()=>{ state.ui.route="profile"; state.ui.menuOpen=false; saveState(); render(); } }, ["Profil"]),
-          el("button", { class:"item", onclick:()=>{ state.ui.route="app"; state.ui.tab="settings"; state.ui.menuOpen=false; saveState(); render(); } }, ["Einstellungen"]),
-          el("button", { class:"item", onclick:()=>{ state.ui.route="app"; state.ui.tab="lessons"; state.ui.menuOpen=false; saveState(); render(); } }, ["Lektionen"]),
-          el("button", { class:"item", onclick:()=>{ state.ui.route="vocab"; state.ui.menuOpen=false; saveState(); render(); } }, ["Meine Vokabeln"]),
-        ]) : null
+        el("button", { class:"menu-btn btn", onclick:()=>{
+          state.ui.menuOpen = true; saveState(); render();
+        }}, ["Menü"])
       ])
     ]);
     return wrap;
@@ -1418,6 +1434,49 @@
     const wrap = el("div");
     wrap.appendChild(panel); wrap.appendChild(btn);
     return wrap;
+  }
+
+  function closeMenu(){
+    state.ui.menuOpen = false; saveState(); render();
+  }
+
+  function DrawerMenu(){
+    // Backdrop schließt beim Klick außerhalb
+    const backdrop = el("div", {
+      class: "drawer-backdrop",
+      onclick: (e)=>{ if (e.target === backdrop) closeMenu(); }
+    });
+
+    // Keyboard: ESC schließt
+    backdrop.tabIndex = -1;
+    backdrop.addEventListener("keydown", (e)=>{ if (e.key === "Escape") closeMenu(); });
+
+    const drawer = el("div", { class: "drawer open" }, [
+      el("div", { class:"drawer-hd" }, [
+        el("div", { class:"title" }, [
+          el("div", { class:"logo" }, ["M"]),
+          el("div", {}, [ el("span", { class:"mono" }, ["MagyarLab"]), " ", el("span",{class:"badge"},["A1–C2"]) ])
+        ]),
+        el("button", { class:"btn", onclick: closeMenu }, ["✖︎"])
+      ]),
+
+      el("div", { class:"drawer-bd" }, [
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="home"; closeMenu(); } }, ["Start"]),
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="app"; state.ui.tab="lessons"; closeMenu(); } }, ["Lektionen"]),
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="app"; state.ui.tab="trainer"; closeMenu(); } }, ["Vokabeltrainer"]),
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="app"; state.ui.tab="reviews"; closeMenu(); } }, ["Wiederholen"]),
+        state.profile.examPrep ? el("button", { class:"item btn block", onclick:()=>{ state.ui.route="app"; state.ui.tab="exam"; closeMenu(); } }, ["Prüfung"]) : null,
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="app"; state.ui.tab="settings"; closeMenu(); } }, ["Einstellungen"]),
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="profile"; closeMenu(); } }, ["Profil"]),
+      ]),
+
+      el("div", { class:"drawer-ft small" }, [
+        "© MagyarLab"
+      ])
+    ]);
+
+    backdrop.appendChild(drawer);
+    return backdrop;
   }
 
   // Initial render done above
