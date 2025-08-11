@@ -478,7 +478,7 @@
           { type: "gap", prompt: "Setze Form + Präfix:",
             items: [
               { q: "Én ____ (venni) a kabátot. (an-)", a: "felveszem" },
-              { q: "Mi ____ (olvasni) egy hosszú cikket. (durch-)", a: "átolvasunk egy hosszú cikket" },
+              { q: "Mi ____ (olvasni) ein hosszú cikket. (durch-)", a: "átolvasunk ein hosszú cikket" },
               { q: "Ő ____ (vinni) a csomagot a postára. (hin-)", a: "odaviszi a csomagot a postára" },
             ]
           }
@@ -619,15 +619,32 @@
     if (!state.ui.hideTopbar) root.appendChild(Navbar());
 
     // Top-Level Routen
-    if (state.ui.route === "home")       { root.appendChild(ViewHome());       root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "profile")    { root.appendChild(ViewProfile());    root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "vocab")      { root.appendChild(ViewVocabHub());   root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "onboarding") { root.appendChild(ViewOnboarding()); root.appendChild(ChatFab()); return; }
-    if (state.ui.route === "exam")       { root.appendChild(ViewExamInfo());   root.appendChild(ChatFab()); return; }
-
+    let view;
+    if (state.ui.route === "home")            view = ViewHome();
+    else if (state.ui.route === "profile")    view = ViewProfile();
+    else if (state.ui.route === "vocab")      view = ViewVocabHub();
+    else if (state.ui.route === "onboarding") view = ViewOnboarding();
+    else if (state.ui.route === "exam")       view = ViewExamInfo();
     // “App”-Ansicht mit Tabs intern (Lessons/Trainer/Reviews/Settings/Exam)
-    root.appendChild(ViewDashboard());
+    else view = ViewDashboard();
+
+    root.appendChild(view);
     root.appendChild(ChatFab());
+
+    // Drawer mount/unmount
+    (function manageDrawer(){
+      const existing = document.querySelector(".drawer-backdrop");
+      if (state.ui.menuOpen) {
+        if (!existing) {
+          const d = DrawerMenu();
+          document.body.appendChild(d);
+          // Fokus für ESC
+          setTimeout(()=>{ d.focus(); }, 0);
+        }
+      } else {
+        if (existing) existing.remove();
+      }
+    })();
   }
 
   // ---------- Navbar ----------
@@ -639,48 +656,11 @@
         el("div", {}, [ el("span", { class:"mono" }, ["MagyarLab"]), " ", el("span",{class:"badge"},["A1–C2"]) ]),
       ]),
 
-      // Rechte Seite: Menü-Button + Dropdown
+      // Rechte Seite: Menü-Button (öffnet Drawer)
       el("div", { class:"menu-wrap" }, [
         el("button", { class:"menu-btn btn", onclick:()=>{
-          state.ui.menuOpen = !state.ui.menuOpen; saveState(); render();
-        }}, ["Menü"]),
-
-        state.ui.menuOpen ? el("div", { class:"dropdown" }, [
-          // Start
-          el("button", { class:"item btn block", onclick:()=>{ 
-            state.ui.route="home"; state.ui.menuOpen=false; saveState(); render(); 
-          } }, ["Start"]),
-
-          // Lektionen
-          el("button", { class:"item btn block", onclick:()=>{ 
-            state.ui.route="app"; state.ui.tab="lessons"; state.ui.menuOpen=false; saveState(); render(); 
-          } }, ["Lektionen"]),
-
-          // Vokabeltrainer
-          el("button", { class:"item btn block", onclick:()=>{ 
-            state.ui.route="app"; state.ui.tab="trainer"; state.ui.menuOpen=false; saveState(); render(); 
-          } }, ["Vokabeltrainer"]),
-
-          // Wiederholen
-          el("button", { class:"item btn block", onclick:()=>{ 
-            state.ui.route="app"; state.ui.tab="reviews"; state.ui.menuOpen=false; saveState(); render(); 
-          } }, ["Wiederholen"]),
-
-          // Prüfung (nur wenn aktiviert)
-          (state.profile.examPrep ? el("button", { class:"item btn block", onclick:()=>{ 
-            state.ui.route="app"; state.ui.tab="exam"; state.ui.menuOpen=false; saveState(); render(); 
-          } }, ["Prüfung"]) : null),
-
-          // Einstellungen
-          el("button", { class:"item btn block", onclick:()=>{ 
-            state.ui.route="app"; state.ui.tab="settings"; state.ui.menuOpen=false; saveState(); render(); 
-          } }, ["Einstellungen"]),
-
-          // Profil
-          el("button", { class:"item btn block", onclick:()=>{ 
-            state.ui.route="profile"; state.ui.menuOpen=false; saveState(); render(); 
-          } }, ["Profil"]),
-        ]) : null
+          state.ui.menuOpen = true; saveState(); render();
+        }}, ["Menü"])
       ])
     ]);
     return wrap;
@@ -1454,6 +1434,49 @@
     const wrap = el("div");
     wrap.appendChild(panel); wrap.appendChild(btn);
     return wrap;
+  }
+
+  function closeMenu(){
+    state.ui.menuOpen = false; saveState(); render();
+  }
+
+  function DrawerMenu(){
+    // Backdrop schließt beim Klick außerhalb
+    const backdrop = el("div", {
+      class: "drawer-backdrop",
+      onclick: (e)=>{ if (e.target === backdrop) closeMenu(); }
+    });
+
+    // Keyboard: ESC schließt
+    backdrop.tabIndex = -1;
+    backdrop.addEventListener("keydown", (e)=>{ if (e.key === "Escape") closeMenu(); });
+
+    const drawer = el("div", { class: "drawer open" }, [
+      el("div", { class:"drawer-hd" }, [
+        el("div", { class:"title" }, [
+          el("div", { class:"logo" }, ["M"]),
+          el("div", {}, [ el("span", { class:"mono" }, ["MagyarLab"]), " ", el("span",{class:"badge"},["A1–C2"]) ])
+        ]),
+        el("button", { class:"btn", onclick: closeMenu }, ["✖︎"])
+      ]),
+
+      el("div", { class:"drawer-bd" }, [
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="home"; closeMenu(); } }, ["Start"]),
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="app"; state.ui.tab="lessons"; closeMenu(); } }, ["Lektionen"]),
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="app"; state.ui.tab="trainer"; closeMenu(); } }, ["Vokabeltrainer"]),
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="app"; state.ui.tab="reviews"; closeMenu(); } }, ["Wiederholen"]),
+        state.profile.examPrep ? el("button", { class:"item btn block", onclick:()=>{ state.ui.route="app"; state.ui.tab="exam"; closeMenu(); } }, ["Prüfung"]) : null,
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="app"; state.ui.tab="settings"; closeMenu(); } }, ["Einstellungen"]),
+        el("button", { class:"item btn block", onclick:()=>{ state.ui.route="profile"; closeMenu(); } }, ["Profil"]),
+      ]),
+
+      el("div", { class:"drawer-ft small" }, [
+        "© MagyarLab"
+      ])
+    ]);
+
+    backdrop.appendChild(drawer);
+    return backdrop;
   }
 
   // Initial render done above
