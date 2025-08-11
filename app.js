@@ -478,7 +478,7 @@
           { type: "gap", prompt: "Setze Form + Präfix:",
             items: [
               { q: "Én ____ (venni) a kabátot. (an-)", a: "felveszem" },
-              { q: "Mi ____ (olvasni) egy hosszú cikket. (durch-)", a: "átolvasunk egy hosszú cikket" },
+              { q: "Mi ____ (olvasni) ein hosszú cikket. (durch-)", a: "átolvasunk ein hosszú cikket" },
               { q: "Ő ____ (vinni) a csomagot a postára. (hin-)", a: "odaviszi a csomagot a postára" },
             ]
           }
@@ -620,7 +620,7 @@
 
     // Top-Level Routen
     let view;
-    if (state.ui.route === "home")       view = ViewHome();
+    if (state.ui.route === "home") view = ViewHome();
     else if (state.ui.route === "profile")    view = ViewProfile();
     else if (state.ui.route === "vocab")      view = ViewVocabHub();
     else if (state.ui.route === "onboarding") view = ViewOnboarding();
