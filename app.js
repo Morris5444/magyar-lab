@@ -619,6 +619,8 @@
   rebuildPlan();
 
   // ---------- App Root ----------
+const root = document.getElementById("app");
+
   window.addEventListener("DOMContentLoaded", function(){ render(); });
 function render() {
     clear(root);
