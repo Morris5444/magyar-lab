@@ -28,6 +28,9 @@ body{
 .title{ display:flex; align-items:center; gap:10px; }
 .title .logo{ width:28px; height:28px; background:var(--brand); border-radius:8px; display:grid; place-items:center; color:#fff; font-weight:700; }
 
+/* Topbar ausblendbar */
+.topbar.hidden{ display:none; }
+
 .grid{ display:grid; gap:16px; }
 .grid-1{ grid-template-columns: 1fr; }
 .grid-2{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -138,8 +141,6 @@ label{ font-size:14px; color:var(--muted); }
 /* Profil-Button oben rechts dezenter */
 .profile-btn{ padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:#fff; }
 .profile-btn:hover{ background:#f8fafc; }
-
-/* duplicate layout/menu styles removed */
 
 /* Modal / Overlay (Hinweise + In-Lesson Menü) */
 .modal-backdrop{ position:fixed; inset:0; background:rgba(15,23,42,0.45); display:grid; place-items:center; z-index:50; }

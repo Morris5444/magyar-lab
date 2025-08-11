@@ -620,7 +620,7 @@
 
     // Top-Level Routen
     let view;
-    if (state.ui.route === "home")            view = ViewHome();
+    if (state.ui.route === "home") view = ViewHome();
     else if (state.ui.route === "profile")    view = ViewProfile();
     else if (state.ui.route === "vocab")      view = ViewVocabHub();
     else if (state.ui.route === "onboarding") view = ViewOnboarding();
@@ -687,6 +687,14 @@
 
   // Dashboard-Container (Standardansicht der App-Route)
   function ViewDashboard(){
+    // Wenn im Lessons-Tab eine Lektion offen ist: nur die Lektion zeigen
+    if (state.ui.tab === "lessons" && state.ui.lessonId){
+      return el("div", { class:"body grid grid-1", style:"margin-top:16px" }, [
+        LessonView()
+      ]);
+    }
+
+    // Standard-Dashboard
     return el("div", { class:"body grid grid-1", style:"margin-top:16px" }, [
       CardDayPlan(),
       CardTips(),
@@ -942,18 +950,29 @@
       ]);
     }
 
-    // ... (bestehendes B2-Grid bleibt unverändert)
     const lessons = CURRICULUM["B2"] || [];
     const grid = el("div", { class:"card" }, [
       el("div", { class:"hd" }, ["Lektionen – B2"]),
       el("div", { class:"bd grid grid-2" }, lessons.map(l => el("div", { class:"card" }, [
         el("div", { class:"hd" }, [l.title]),
         el("div", { class:"bd" }, [ el("div", { class:"chips" }, l.grammar.map(g => el("span", { class:"chip" }, [g.name]))) ]),
-        el("div", { class:"ft" }, [ el("button", { class:"btn primary block", onclick:()=>{ state.ui.lessonId = l.id; state.ui.hideTopbar = true; saveState(); rerenderBody(); } }, ["Öffnen"]) ])
-      ]))),
+        el("div", { class:"ft" }, [
+          el("button", {
+            class:"btn primary block",
+            onclick:()=>{
+              state.ui.lessonId = l.id;
+              state.ui.hideTopbar = true;  // Topbar ausblenden
+              saveState();
+              render();
+              window.scrollTo(0,0);
+            }
+          }, ["Öffnen"])
+        ])
+      ])))
     ]);
-    if (state.ui.lessonId) grid.appendChild(LessonView());
-    return grid;
+
+    // WICHTIG: Wenn eine Lektion offen ist, nur die Lektion anzeigen – NICHT Grid + Lesson
+    return state.ui.lessonId ? LessonView() : grid;
   }
 
   function lessonById(id){
