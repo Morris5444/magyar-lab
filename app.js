@@ -17,7 +17,7 @@
     } catch (e) { return null; }
   }
   function saveState() {
-    if (!state?.profile?.allowOffline) return;
+    if (!(state && state.profile && state.profile.allowOffline)) return;
     try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
   }
 
@@ -572,7 +572,7 @@
       const u = new SpeechSynthesisUtterance(text);
       const hu = VOICES.find(v => /hu/i.test(v.lang));
       u.voice = hu || null;
-      u.lang = hu?.lang || "hu-HU";
+      u.lang = (hu && hu.lang) || "hu-HU";
       u.rate = (opts.rate != null ? opts.rate : (typeof getAudioRate === "function" ? getAudioRate() : 1));
       u.pitch = opts.pitch || 1;
       speechSynthesis.cancel();
@@ -610,7 +610,7 @@
   // ---------- Plan ----------
   function rebuildPlan() {
     const due = Object.entries(state.srs)
-      .filter(([,v]) => !v?.due || v.due <= Date.now())
+      .filter(([,v]) => !v || !v.due || v.due <= Date.now())
       .map(([id]) => ({ type: "srs", id }));
 
     const lvl = state.profile.level || "B2";
@@ -1192,7 +1192,7 @@ function render() {
         el("div", { class:"hr" }),
         el("div", { class:"row" }, [
           el("div", { class:"badge" }, ["Gyakorlás: 3 von 15 Aufgaben werden angezeigt"]),
-          el("button", { class:"btn primary", onclick:()=>{ document.getElementById("tasks-anchor")?.scrollIntoView({behavior:'smooth'}); } }, ["Zu den Aufgaben"]),
+          el("button", { class:"btn primary", onclick:()=>{ const anchor=document.getElementById("tasks-anchor"); if (anchor) anchor.scrollIntoView({behavior:'smooth'}); } }, ["Zu den Aufgaben"]),
           audioChips
         ]),
       ]),
