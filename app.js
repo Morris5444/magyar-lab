@@ -626,8 +626,9 @@
 
   // ---------- App Root ----------
 const root = document.getElementById("app");
+// Render immediately on load so content appears without waiting for DOM events
+render();
 
-  window.addEventListener("DOMContentLoaded", function(){ render(); });
 function render() {
     clear(root);
     if (!state.ui.hideTopbar) root.appendChild(Navbar());
