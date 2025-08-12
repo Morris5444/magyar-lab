@@ -3,6 +3,12 @@
   const LS_KEY = "magyarlab-v1-state";
   const APP_VERSION = 2; // Fix: Schema-Version für Migration
 
+  // ---------- Helpers ----------
+  // Provide a fallback for structuredClone in environments where it's unavailable
+  const clone = typeof structuredClone === "function"
+    ? structuredClone
+    : (obj) => JSON.parse(JSON.stringify(obj));
+
   // ---------- Storage ----------
   function loadState() {
     try {
@@ -36,7 +42,7 @@
   };
 
   // ---------- Init + Migration ----------
-  let state = loadState() || structuredClone(DEFAULT_STATE);
+  let state = loadState() || clone(DEFAULT_STATE);
 
   // Migrationslogik: alte Felder entfernen, Onboarding erzwingen, Level setzen
   (function migrate() {
